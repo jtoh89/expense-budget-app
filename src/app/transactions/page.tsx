@@ -1,22 +1,58 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import AddTransactionModal from "@/components/AddTransactionModal";
 
-const MOCK_TRANSACTIONS = Array.from({ length: 10 }, (_, i) => ({
-  card: i % 2 === 0 ? "Yin - Chase Reserve" : "Yin - Amex",
-  date: "15 Oct 2025",
-  description: "Description",
-  debit: i % 2 === 0 ? "$100" : "",
-  credit: i % 2 === 0 ? "" : "$100",
-  subCategory: "Sub Category",
-  category: "Category",
-}));
+type Transaction = {
+  id: string;
+  card: string;
+  date: string;
+  description: string;
+  debit: string;
+  credit: string;
+  subCategory: string;
+  category: string;
+};
 
 export default function TransactionsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [transactions, setTransactions] = useState(MOCK_TRANSACTIONS);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [totalPages, setTotalPages] = useState(1);
+
+  const fetchTransactions = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(
+        `/api/transactions?page=${currentPage}&limit=10&sort=newest`
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to fetch");
+      setTransactions(data.transactions || []);
+      setTotalPages(data.pagination?.totalPages ?? 1);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to load transactions");
+      setTransactions([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [currentPage]);
+
+  useEffect(() => {
+    fetchTransactions();
+  }, [fetchTransactions]);
+
+  const handleAddSuccess = () => {
+    fetchTransactions();
+  };
+
+  const pageNumbers = Array.from(
+    { length: Math.min(5, totalPages) },
+    (_, i) => i + 1
+  );
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-8">
@@ -58,117 +94,115 @@ export default function TransactionsPage() {
       </div>
 
       <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[800px]">
-            <thead>
-              <tr className="bg-gray-50">
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                  Card
-                </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                  Date
-                </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                  Description
-                </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                  Debit
-                </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                  Credit
-                </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                  Sub Category
-                </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                  Category
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {transactions.map((row, i) => (
-                <tr
-                  key={i}
-                  className={`border-t border-gray-100 ${
-                    i % 2 === 0 ? "bg-white" : "bg-gray-50/50"
-                  } hover:bg-gray-50`}
-                >
-                  <td className="px-4 py-3 text-sm text-gray-700">{row.card}</td>
-                  <td className="px-4 py-3 text-sm text-gray-700">
-                    {row.date}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-700">
-                    {row.description}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-700">
-                    {row.debit}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-700">
-                    {row.credit}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-700">
-                    {row.subCategory}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-700">
-                    {row.category}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        {loading ? (
+          <div className="flex justify-center py-12">
+            <p className="text-gray-500">Loading...</p>
+          </div>
+        ) : error ? (
+          <div className="flex justify-center py-12">
+            <p className="text-red-600">{error}</p>
+          </div>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[800px]">
+                <thead>
+                  <tr className="bg-gray-50">
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                      Card
+                    </th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                      Date
+                    </th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                      Description
+                    </th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                      Debit
+                    </th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                      Credit
+                    </th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                      Sub Category
+                    </th>
+                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                      Category
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {transactions.map((row, i) => (
+                    <tr
+                      key={row.id}
+                      className={`border-t border-gray-100 hover:bg-gray-50 ${
+                        i % 2 === 0 ? "bg-white" : "bg-gray-50/50"
+                      }`}
+                    >
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {row.card}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {row.date}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {row.description}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {row.debit}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {row.credit}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {row.subCategory}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {row.category}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
 
-        <div className="flex items-center justify-center gap-2 border-t border-gray-200 bg-gray-50 px-4 py-3">
-          <button
-            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-            className="rounded px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-200 transition-colors disabled:opacity-50"
-          >
-            Prev
-          </button>
-          {[1, 2, 3].map((page) => (
-            <button
-              key={page}
-              onClick={() => setCurrentPage(page)}
-              className={`rounded px-3 py-1.5 text-sm font-medium transition-colors ${
-                currentPage === page
-                  ? "bg-primary text-white"
-                  : "text-gray-600 hover:bg-gray-200"
-              }`}
-            >
-              {page}
-            </button>
-          ))}
-          <button
-            onClick={() => setCurrentPage((p) => Math.min(3, p + 1))}
-            className="rounded px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-200 transition-colors disabled:opacity-50"
-          >
-            Next
-          </button>
-        </div>
+            <div className="flex items-center justify-center gap-2 border-t border-gray-200 bg-gray-50 px-4 py-3">
+              <button
+                onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage <= 1}
+                className="rounded px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-200 transition-colors disabled:opacity-50"
+              >
+                Prev
+              </button>
+              {pageNumbers.map((page) => (
+                <button
+                  key={page}
+                  onClick={() => setCurrentPage(page)}
+                  className={`rounded px-3 py-1.5 text-sm font-medium transition-colors ${
+                    currentPage === page
+                      ? "bg-primary text-white"
+                      : "text-gray-600 hover:bg-gray-200"
+                  }`}
+                >
+                  {page}
+                </button>
+              ))}
+              <button
+                onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage >= totalPages}
+                className="rounded px-3 py-1.5 text-sm font-medium text-gray-600 hover:bg-gray-200 transition-colors disabled:opacity-50"
+              >
+                Next
+              </button>
+            </div>
+          </>
+        )}
       </div>
 
       <AddTransactionModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
-        onAdd={(data) => {
-          const isDebit = data.amount > 0;
-          const formattedDate = new Date(data.date + "T00:00:00").toLocaleDateString(
-            "en-GB",
-            { day: "numeric", month: "short", year: "numeric" }
-          );
-          setTransactions((prev) => [
-            {
-              card: "Yin - Chase Reserve",
-              date: formattedDate,
-              description: data.description,
-              debit: isDebit ? `$${data.amount}` : "",
-              credit: !isDebit ? `$${Math.abs(data.amount)}` : "",
-              subCategory: data.subCategoryLabel,
-              category: data.category,
-            },
-            ...prev,
-          ]);
-        }}
+        onSuccess={handleAddSuccess}
       />
     </div>
   );

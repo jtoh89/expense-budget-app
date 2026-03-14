@@ -1,19 +1,20 @@
 import { NextResponse } from "next/server";
-import { sql } from "@/lib/db";
+import { supabase } from "@/lib/db";
 
 /**
- * Health check - verifies DB connection.
+ * Health check - verifies Supabase connection.
  * GET /api/health
  */
 export async function GET() {
-  if (!sql) {
+  if (!supabase) {
     return NextResponse.json(
-      { status: "error", database: "DATABASE_URL not configured" },
+      { status: "error", database: "Supabase URL/key not configured" },
       { status: 503 }
     );
   }
   try {
-    await sql`SELECT 1`;
+    const { error } = await supabase.from("categories").select("id").limit(1);
+    if (error) throw error;
     return NextResponse.json({ status: "ok", database: "connected" });
   } catch (error) {
     console.error("DB health check failed:", error);

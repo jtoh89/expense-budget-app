@@ -1,9 +1,12 @@
-import postgres from "postgres";
+import { createClient } from "@supabase/supabase-js";
 
-const connectionString = process.env.DATABASE_URL;
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
+const supabaseKey =
+  process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_ANON_KEY ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-export const sql = connectionString
-  ? postgres(connectionString)
-  : (null as unknown as ReturnType<typeof postgres>);
+export const supabase =
+  supabaseUrl && supabaseKey
+    ? createClient(supabaseUrl, supabaseKey)
+    : (null as unknown as ReturnType<typeof createClient>);
 
-export default sql;
+export default supabase;
