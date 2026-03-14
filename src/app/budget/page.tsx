@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import AddNewInvestmentsModal from "@/components/AddNewInvestmentsModal";
+import AddPreTaxModal from "@/components/AddPreTaxModal";
 import {
   Chart as ChartJS,
   ArcElement,
@@ -54,6 +56,8 @@ export default function BudgetPage() {
   const [estimatedTaxes, setEstimatedTaxes] = useState(40000);
   const [preTaxRows, setPreTaxRows] = useState(PRE_TAX_ROWS);
   const [investmentRows, setInvestmentRows] = useState(INVESTMENT_ROWS);
+  const [isInvestmentsModalOpen, setIsInvestmentsModalOpen] = useState(false);
+  const [isPreTaxModalOpen, setIsPreTaxModalOpen] = useState(false);
 
   const pieChartData = {
     labels: BUDGET_PIE_DATA.map((c) => c.name),
@@ -103,25 +107,6 @@ export default function BudgetPage() {
       <div className="mb-10">
         <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <h1 className="text-2xl font-bold text-gray-800">Budget Planner</h1>
-          <button className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover transition-colors">
-            <svg
-              className="h-4 w-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 4v16m8-8H4"
-              />
-            </svg>
-            Add New Budget
-          </button>
-        </div>
-
-        <div className="mb-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <label className="mb-2 block text-sm font-medium text-gray-700">
               Budget Year
@@ -129,12 +114,15 @@ export default function BudgetPage() {
             <select
               value={budgetYear}
               onChange={(e) => setBudgetYear(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-800 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              className="w-full min-w-[120px] rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-800 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             >
               <option value="2025">2025</option>
               <option value="2026">2026</option>
             </select>
           </div>
+        </div>
+
+        <div className="mb-8 flex max-w-md flex-col gap-6">
           <div>
             <label className="mb-2 block text-sm font-medium text-gray-700">
               Annual Income
@@ -188,22 +176,19 @@ export default function BudgetPage() {
               className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-800 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
             />
           </div>
-        </div>
-
-        {/* Income and Take Home Pay */}
-        <h2 className="mb-6 text-xl font-bold text-gray-800">
-          Category Budget Allocation
-        </h2>
-        <div className="mb-10 grid gap-6 sm:grid-cols-2">
-          <div className="rounded-xl bg-white p-6 shadow-sm">
-            <p className="text-sm text-gray-500">Adjusted Gross Income</p>
-            <p className="mt-2 text-2xl font-bold text-gray-800">
+          <div>
+            <label className="mb-2 block text-sm font-medium text-gray-700">
+              Adjusted Gross Income
+            </label>
+            <p className="py-2.5 text-base font-medium text-gray-800">
               {formatCurrency(adjustedGrossIncome)}
             </p>
           </div>
-          <div className="rounded-xl bg-white p-6 shadow-sm">
-            <p className="text-sm text-gray-500">Take Home Pay</p>
-            <p className="mt-2 text-2xl font-bold text-gray-800">
+          <div>
+            <label className="mb-2 block text-sm font-medium text-gray-700">
+              Take Home Pay
+            </label>
+            <p className="py-2.5 text-base font-medium text-gray-800">
               {formatCurrency(takeHomePay)}
             </p>
           </div>
@@ -228,11 +213,11 @@ export default function BudgetPage() {
           </div>
         </div>
 
-        {/* Category-wise Budget Allocation */}
+        {/* Category Budget Allocation */}
         <div className="mb-10 flex flex-col gap-6 lg:flex-row lg:items-start">
           <div className="flex-1 rounded-xl bg-white p-6 shadow-sm">
             <h3 className="mb-6 text-lg font-semibold text-gray-800">
-              Category-wise Budget Allocation
+              Category Budget Allocation
             </h3>
             <div className="flex gap-6">
               <div className="h-64 w-64 shrink-0">
@@ -313,7 +298,11 @@ export default function BudgetPage() {
         <div className="mb-10">
           <div className="mb-4 flex items-center gap-2">
             <h3 className="text-lg font-semibold text-gray-800">PRE-Tax</h3>
-            <button className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-white hover:bg-primary-hover transition-colors">
+            <button
+              type="button"
+              onClick={() => setIsPreTaxModalOpen(true)}
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-white hover:bg-primary-hover transition-colors"
+            >
               <svg
                 className="h-4 w-4"
                 fill="none"
@@ -421,7 +410,11 @@ export default function BudgetPage() {
         <div>
           <div className="mb-4 flex items-center gap-2">
             <h3 className="text-lg font-semibold text-gray-800">Investments</h3>
-            <button className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-white hover:bg-primary-hover transition-colors">
+            <button
+              type="button"
+              onClick={() => setIsInvestmentsModalOpen(true)}
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-white hover:bg-primary-hover transition-colors"
+            >
               <svg
                 className="h-4 w-4"
                 fill="none"
@@ -499,6 +492,28 @@ export default function BudgetPage() {
           </div>
         </div>
       </div>
+
+      <AddPreTaxModal
+        isOpen={isPreTaxModalOpen}
+        onClose={() => setIsPreTaxModalOpen(false)}
+        onAdd={(row) => {
+          setPreTaxRows((prev) => [...prev, row]);
+        }}
+      />
+      <AddNewInvestmentsModal
+        isOpen={isInvestmentsModalOpen}
+        onClose={() => setIsInvestmentsModalOpen(false)}
+        onAdd={(expense, monthlyAmount) => {
+          setInvestmentRows((prev) => [
+            ...prev,
+            {
+              expense,
+              monthly: monthlyAmount,
+              annual: monthlyAmount * 12,
+            },
+          ]);
+        }}
+      />
     </div>
   );
 }
