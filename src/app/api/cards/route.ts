@@ -70,7 +70,13 @@ export async function POST(request: Request) {
       );
     }
 
-    const id = `card_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    const slug = `${String(owner).trim()}-${String(cardName).trim()}`
+      .toLowerCase()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9-]/g, "")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "");
+    const id = slug || `card_${Date.now()}`;
 
     const { error } = await supabase.from("cards").insert({
       id,
@@ -80,7 +86,7 @@ export async function POST(request: Request) {
       description_header: descriptionHeader ? String(descriptionHeader).trim() : "Description",
       debit_header: debitHeader ? String(debitHeader).trim() : null,
       credit_header: creditHeader ? String(creditHeader).trim() : null,
-      single_column: singleColumn === true,
+      is_inverted: singleColumn === true,
     });
 
     if (error) throw error;

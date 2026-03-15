@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import AddTransactionModal from "@/components/AddTransactionModal";
 import SubCategoryAutocomplete, { type SubCategory } from "@/components/SubCategoryAutocomplete";
 
@@ -24,6 +24,11 @@ export default function TransactionsPage() {
   const [currentPage, setCurrentPage] = useState(1);
   const [sortBy, setSortBy] = useState<SortBy>("date");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
+  const [showIncompleteOnly, setShowIncompleteOnly] = useState(false);
+  const [selectedOwners, setSelectedOwners] = useState<string[]>([]);
+  const [owners, setOwners] = useState<string[]>([]);
+  const [ownersDropdownOpen, setOwnersDropdownOpen] = useState(false);
+  const ownersDropdownRef = useRef<HTMLDivElement>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [subCategories, setSubCategories] = useState<SubCategory[]>([]);
@@ -38,12 +43,37 @@ export default function TransactionsPage() {
       .catch(() => setSubCategories([]));
   }, []);
 
+  useEffect(() => {
+    fetch("/api/cards")
+      .then((r) => r.json())
+      .then((data) => {
+        const cards = Array.isArray(data) ? data : [];
+        const ownerSet = new Set<string>();
+        for (const c of cards) {
+          if (c.owner) ownerSet.add(c.owner);
+        }
+        setOwners(Array.from(ownerSet).sort());
+      })
+      .catch(() => setOwners([]));
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (ownersDropdownRef.current && !ownersDropdownRef.current.contains(e.target as Node)) {
+        setOwnersDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
   const fetchTransactions = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
+      const ownersParam = selectedOwners.length > 0 ? selectedOwners.join(",") : "";
       const res = await fetch(
-        `/api/transactions?page=${currentPage}&limit=100&sortBy=${sortBy}&sortDir=${sortDir}`
+        `/api/transactions?page=${currentPage}&limit=50&sortBy=${sortBy}&sortDir=${sortDir}&incompleteOnly=${showIncompleteOnly}&owners=${encodeURIComponent(ownersParam)}`
       );
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to fetch");
@@ -55,7 +85,7 @@ export default function TransactionsPage() {
     } finally {
       setLoading(false);
     }
-  }, [currentPage, sortBy, sortDir]);
+  }, [currentPage, sortBy, sortDir, showIncompleteOnly, selectedOwners]);
 
   useEffect(() => {
     fetchTransactions();
@@ -101,18 +131,81 @@ export default function TransactionsPage() {
       <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold text-gray-800">Transactions</h1>
         <div className="flex flex-wrap items-center gap-3">
-          <select className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary">
-            <option>This Month</option>
-          </select>
+          <div className="relative" ref={ownersDropdownRef}>
+            <button
+              type="button"
+              onClick={() => setOwnersDropdownOpen((o) => !o)}
+              className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 shadow-sm hover:bg-gray-50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary min-w-[140px]"
+            >
+              <span className="truncate">
+                {selectedOwners.length === 0
+                  ? "All Owners"
+                  : `${selectedOwners.length} selected`}
+              </span>
+              <svg className={`h-4 w-4 shrink-0 text-gray-500 transition-transform ${ownersDropdownOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+            {ownersDropdownOpen && (
+              <div className="absolute left-0 top-full z-10 mt-1 w-48 rounded-lg border border-gray-200 bg-white py-2 shadow-lg">
+                {owners.length === 0 ? (
+                  <p className="px-4 py-2 text-sm text-gray-500">No owners</p>
+                ) : (
+                  owners.map((owner) => (
+                    <label key={owner} className="flex cursor-pointer items-center gap-2 px-4 py-2 hover:bg-gray-50">
+                      <input
+                        type="checkbox"
+                        checked={
+                          selectedOwners.length === 0 ||
+                          selectedOwners.includes(owner)
+                        }
+                        onChange={() => {
+                          setSelectedOwners((prev) => {
+                            const next = prev.length === 0
+                              ? owners.filter((n) => n !== owner)
+                              : prev.includes(owner)
+                                ? prev.filter((n) => n !== owner)
+                                : [...prev, owner];
+                            return next.length === owners.length ? [] : next;
+                          });
+                          setCurrentPage(1);
+                        }}
+                        className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                      />
+                      <span className="text-sm text-gray-700">{owner}</span>
+                    </label>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
           <select className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary">
             <option>All categories</option>
           </select>
           <select className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary">
             <option>All Types</option>
           </select>
-          <select className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary">
-            <option>Newest First</option>
-          </select>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-gray-700">Show Incomplete Only</span>
+            <button
+              type="button"
+              role="switch"
+              aria-checked={showIncompleteOnly}
+              onClick={() => {
+                setShowIncompleteOnly((v) => !v);
+                setCurrentPage(1);
+              }}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${
+                showIncompleteOnly ? "bg-primary" : "bg-gray-200"
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition-transform ${
+                  showIncompleteOnly ? "translate-x-5" : "translate-x-1"
+                }`}
+              />
+            </button>
+          </div>
           <button
             onClick={() => setIsAddModalOpen(true)}
             className="ml-auto flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary-hover transition-colors"

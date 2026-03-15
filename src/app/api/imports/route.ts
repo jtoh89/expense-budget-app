@@ -63,12 +63,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const importId = `import_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    const today = new Date();
+    const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+    const importId = `${String(cardId).trim()}_${dateStr}`;
 
     const { error: importError } = await supabase.from("imports").insert({
       id: importId,
       card_id: cardId,
       filename: String(filename),
+      upload_date: new Date().toISOString(),
       row_count: transactions.length,
     });
 
@@ -98,7 +101,9 @@ export async function POST(request: NextRequest) {
     });
 
     if (txRows.length > 0) {
-      const { error: txError } = await supabase.from("transactions").upsert(txRows, { onConflict: "id" });
+      const { error: txError } = await supabase
+        .from("transactions")
+        .upsert(txRows, { onConflict: "id", ignoreDuplicates: true });
       if (txError) throw txError;
     }
 

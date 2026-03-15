@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { formatCurrency, formatCurrencyRounded, parseCurrencyInput } from "@/lib/currency";
 import {
   Chart as ChartJS,
@@ -13,13 +13,17 @@ import { Doughnut } from "react-chartjs-2";
 
 ChartJS.register(ArcElement, CategoryScale, Tooltip, Legend);
 
-const BUDGET_PIE_DATA = [
-  { name: "Food & Dining", color: "#10b981", value: 24 },
-  { name: "Transport", color: "#7dd3fc", value: 16 },
-  { name: "Shopping", color: "#f97316", value: 20 },
-  { name: "Bills & Utilities", color: "#ef4444", value: 14 },
-  { name: "Entertainment", color: "#a78bfa", value: 10 },
-  { name: "Savings & Investments", color: "#1e40af", value: 16 },
+const CHART_COLORS = [
+  "#10b981",
+  "#7dd3fc",
+  "#f97316",
+  "#ef4444",
+  "#a78bfa",
+  "#1e40af",
+  "#ec4899",
+  "#14b8a6",
+  "#eab308",
+  "#6366f1",
 ];
 
 type CategoryRow = {
@@ -128,6 +132,29 @@ export default function BudgetPage() {
   const [allocationsLoading, setAllocationsLoading] = useState(true);
   const [updatingSection, setUpdatingSection] = useState<string | null>(null);
   const [budgetYears, setBudgetYears] = useState<number[]>([]);
+  const [selectedCategoriesForCategoryChart, setSelectedCategoriesForCategoryChart] = useState<string[]>([]);
+  const [selectedCategoriesForSubChart, setSelectedCategoriesForSubChart] = useState<string[]>([]);
+  const [categoryChartDropdownOpen, setCategoryChartDropdownOpen] = useState(false);
+  const [subChartDropdownOpen, setSubChartDropdownOpen] = useState(false);
+  const categoryChartDropdownRef = useRef<HTMLDivElement>(null);
+  const subChartDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (
+        categoryChartDropdownRef.current && !categoryChartDropdownRef.current.contains(e.target as Node)
+      ) {
+        setCategoryChartDropdownOpen(false);
+      }
+      if (
+        subChartDropdownRef.current && !subChartDropdownRef.current.contains(e.target as Node)
+      ) {
+        setSubChartDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -211,27 +238,6 @@ export default function BudgetPage() {
     };
   }, [budgetYear]);
 
-  const pieChartData = {
-    labels: BUDGET_PIE_DATA.map((c) => c.name),
-    datasets: [
-      {
-        data: BUDGET_PIE_DATA.map((c) => c.value),
-        backgroundColor: BUDGET_PIE_DATA.map((c) => c.color),
-        borderWidth: 0,
-      },
-    ],
-  };
-
-  const pieOptions = {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: {
-        display: false,
-      },
-    },
-  };
-
   const parseMatchPct = (s: string | undefined): number => {
     if (!s || s === "—" || s === "-") return 0;
     const m = s.replace(/%/g, "").trim();
@@ -267,6 +273,70 @@ export default function BudgetPage() {
       }),
       { monthly: 0, annual: 0 }
     );
+  };
+
+  const getRowAnnual = (section: { name: string; rows: CategoryRow[] }, row: CategoryRow) => {
+    if (section.name === "Pretax" && section.rows) {
+      return getPretaxMyContribution(row.irsLimit ?? 0, parseMatchPct(row.match));
+    }
+    return row.annual;
+  };
+
+  const categoryChartItems = categoryRows
+    .filter((s) => selectedCategoriesForCategoryChart.length === 0 || selectedCategoriesForCategoryChart.includes(s.name))
+    .map((s, i) => ({
+      name: s.name,
+      value: getSectionTotals(s.rows, s.name).annual,
+      color: CHART_COLORS[i % CHART_COLORS.length],
+    }))
+    .filter((item) => item.value > 0);
+
+  const categoryChartData = {
+    labels: categoryChartItems.map((c) => c.name),
+    datasets: [
+      {
+        data: categoryChartItems.map((c) => c.value),
+        backgroundColor: categoryChartItems.map((c) => c.color),
+        borderWidth: 0,
+      },
+    ],
+  };
+
+  const subcategoryRowsForChart = (
+    selectedCategoriesForSubChart.length > 0
+      ? categoryRows.filter((s) => selectedCategoriesForSubChart.includes(s.name))
+      : categoryRows
+  ).flatMap((s) => s.rows);
+
+  const subcategoryChartItems = subcategoryRowsForChart
+    .map((r, i) => {
+      const section = categoryRows.find((s) =>
+        s.rows.some((row) => row.subcategoryId === r.subcategoryId)
+      );
+      const annual = section ? getRowAnnual(section, r) : r.annual;
+      return { row: r, annual, color: CHART_COLORS[i % CHART_COLORS.length] };
+    })
+    .filter((item) => item.annual > 0);
+
+  const subcategoryChartData = {
+    labels: subcategoryChartItems.map((c) => c.row.expense),
+    datasets: [
+      {
+        data: subcategoryChartItems.map((c) => c.annual),
+        backgroundColor: subcategoryChartItems.map((c) => c.color),
+        borderWidth: 0,
+      },
+    ],
+  };
+
+  const pieOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: {
+        display: false,
+      },
+    },
   };
 
   const updatePretaxRow = (rowIdx: number, field: "irsLimit" | "match", value: string | number) => {
@@ -436,7 +506,7 @@ export default function BudgetPage() {
       {/* Budget Planner */}
       <div className="mb-10">
         <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <h1 className="text-2xl font-bold text-gray-800">Budget Planner</h1>
+          <h1 className="text-2xl font-bold text-gray-800">{budgetYear} Budget Planner</h1>
           <div className="flex items-end gap-2">
             <div>
               <label className="mb-2 block text-sm font-medium text-gray-700">
@@ -613,77 +683,157 @@ export default function BudgetPage() {
         </div>
 
         {/* Category Budget Allocation */}
-        <div className="mb-10 flex flex-col gap-6 lg:flex-row lg:items-start">
-          <div className="flex-1 rounded-xl bg-white p-6 shadow-sm">
-            <h3 className="mb-6 text-xl font-bold text-gray-800">
-              Category Budget Allocation
-            </h3>
-            <div className="flex gap-6">
-              <div className="h-64 w-64 shrink-0">
-                <Doughnut data={pieChartData} options={pieOptions} />
+        <div className="mb-10">
+          <div className="rounded-xl bg-white p-6 shadow-sm">
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+              <h3 className="text-xl font-bold text-gray-800">
+                Category Budget Allocation
+              </h3>
+              <div className="relative" ref={categoryChartDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setCategoryChartDropdownOpen((o) => !o)}
+                  className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-800 shadow-sm hover:bg-gray-50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary min-w-[180px]"
+                >
+                  <span className="truncate">
+                    {selectedCategoriesForCategoryChart.length === 0
+                      ? "All Categories"
+                      : `${selectedCategoriesForCategoryChart.length} selected`}
+                  </span>
+                  <svg className={`h-4 w-4 shrink-0 text-gray-500 transition-transform ${categoryChartDropdownOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {categoryChartDropdownOpen && (
+                  <div className="absolute right-0 top-full z-10 mt-1 w-56 rounded-lg border border-gray-200 bg-white py-2 shadow-lg">
+                    {categoryRows.map((s) => (
+                      <label key={s.name} className="flex cursor-pointer items-center gap-2 px-4 py-2 hover:bg-gray-50">
+                        <input
+                          type="checkbox"
+                          checked={
+                            selectedCategoriesForCategoryChart.length === 0 ||
+                            selectedCategoriesForCategoryChart.includes(s.name)
+                          }
+                          onChange={() => {
+                            setSelectedCategoriesForCategoryChart((prev) => {
+                              const allNames = categoryRows.map((x) => x.name);
+                              const next = prev.length === 0
+                                ? allNames.filter((n) => n !== s.name)
+                                : prev.includes(s.name)
+                                  ? prev.filter((n) => n !== s.name)
+                                  : [...prev, s.name];
+                              return next.length === allNames.length ? [] : next;
+                            });
+                          }}
+                          className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                        />
+                        <span className="text-sm text-gray-700">{s.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
               </div>
-              <div className="flex flex-col justify-center gap-2">
-                {BUDGET_PIE_DATA.map((c) => (
+            </div>
+            <div className="flex gap-6">
+              <div className="h-64 w-64 shrink-0 flex items-center justify-center">
+                {categoryChartItems.length > 0 ? (
+                  <Doughnut data={categoryChartData} options={pieOptions} />
+                ) : (
+                  <p className="text-sm text-gray-500">No budget data</p>
+                )}
+              </div>
+              <div className="flex flex-col justify-center gap-2 max-h-64 overflow-y-auto">
+                {categoryChartItems.map((c) => (
                   <div key={c.name} className="flex items-center gap-2">
                     <div
-                      className="h-3 w-3 rounded-full"
+                      className="h-3 w-3 shrink-0 rounded-full"
                       style={{ backgroundColor: c.color }}
                     />
-                    <span className="text-sm text-gray-700">{c.name}</span>
+                    <span className="text-sm text-gray-700 truncate">{c.name}</span>
+                    <span className="text-sm text-gray-500 ml-auto shrink-0">
+                      {formatCurrencyRounded(c.value)}
+                    </span>
                   </div>
                 ))}
               </div>
             </div>
-          </div>
-          <div className="w-full lg:w-48 shrink-0">
-            <label className="mb-2 block text-sm font-medium text-gray-700">
-              Category
-            </label>
-            <select className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-800 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary">
-              <option>All Categories</option>
-            </select>
           </div>
         </div>
 
         {/* Sub Category Budget Allocation */}
-        <div className="mb-10 flex flex-col gap-6 lg:flex-row lg:items-start">
-          <div className="flex-1 rounded-xl bg-white p-6 shadow-sm">
-            <h3 className="mb-6 text-xl font-bold text-gray-800">
-              Sub Category Budget Allocation
-            </h3>
-            <div className="flex gap-6">
-              <div className="h-64 w-64 shrink-0">
-                <Doughnut data={pieChartData} options={pieOptions} />
+        <div className="mb-10">
+          <div className="rounded-xl bg-white p-6 shadow-sm">
+            <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
+              <h3 className="text-xl font-bold text-gray-800">
+                Sub Category Budget Allocation
+              </h3>
+              <div className="relative" ref={subChartDropdownRef}>
+                <button
+                  type="button"
+                  onClick={() => setSubChartDropdownOpen((o) => !o)}
+                  className="flex items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm text-gray-800 shadow-sm hover:bg-gray-50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary min-w-[180px]"
+                >
+                  <span className="truncate">
+                    {selectedCategoriesForSubChart.length === 0
+                      ? "All Categories"
+                      : `${selectedCategoriesForSubChart.length} selected`}
+                  </span>
+                  <svg className={`h-4 w-4 shrink-0 text-gray-500 transition-transform ${subChartDropdownOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {subChartDropdownOpen && (
+                  <div className="absolute right-0 top-full z-10 mt-1 w-56 rounded-lg border border-gray-200 bg-white py-2 shadow-lg">
+                    {categoryRows.map((s) => (
+                      <label key={s.name} className="flex cursor-pointer items-center gap-2 px-4 py-2 hover:bg-gray-50">
+                        <input
+                          type="checkbox"
+                          checked={
+                            selectedCategoriesForSubChart.length === 0 ||
+                            selectedCategoriesForSubChart.includes(s.name)
+                          }
+                          onChange={() => {
+                            setSelectedCategoriesForSubChart((prev) => {
+                              const allNames = categoryRows.map((x) => x.name);
+                              const next = prev.length === 0
+                                ? allNames.filter((n) => n !== s.name)
+                                : prev.includes(s.name)
+                                  ? prev.filter((n) => n !== s.name)
+                                  : [...prev, s.name];
+                              return next.length === allNames.length ? [] : next;
+                            });
+                          }}
+                          className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
+                        />
+                        <span className="text-sm text-gray-700">{s.name}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
               </div>
-              <div className="flex flex-col justify-center gap-2">
-                {BUDGET_PIE_DATA.map((c) => (
-                  <div key={c.name} className="flex items-center gap-2">
+            </div>
+            <div className="flex gap-6">
+              <div className="h-64 w-64 shrink-0 flex items-center justify-center">
+                {subcategoryChartItems.length > 0 ? (
+                  <Doughnut data={subcategoryChartData} options={pieOptions} />
+                ) : (
+                  <p className="text-sm text-gray-500">No budget data</p>
+                )}
+              </div>
+              <div className="flex flex-col justify-center gap-2 max-h-64 overflow-y-auto min-w-0">
+                {subcategoryChartItems.map((item) => (
+                  <div key={item.row.subcategoryId} className="flex items-center gap-2">
                     <div
-                      className="h-3 w-3 rounded-full"
-                      style={{ backgroundColor: c.color }}
+                      className="h-3 w-3 shrink-0 rounded-full"
+                      style={{ backgroundColor: item.color }}
                     />
-                    <span className="text-sm text-gray-700">{c.name}</span>
+                    <span className="text-sm text-gray-700 truncate">{item.row.expense}</span>
+                    <span className="text-sm text-gray-500 ml-auto shrink-0">
+                      {formatCurrencyRounded(item.annual)}
+                    </span>
                   </div>
                 ))}
               </div>
-            </div>
-          </div>
-          <div className="flex w-full flex-col gap-4 lg:w-48 shrink-0">
-            <div>
-              <label className="mb-2 block text-sm font-medium text-gray-700">
-                Category
-              </label>
-              <select className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-800 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary">
-                <option>All Categories</option>
-              </select>
-            </div>
-            <div>
-              <label className="mb-2 block text-sm font-medium text-gray-700">
-                Sub Categories
-              </label>
-              <select className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-800 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary">
-                <option>All Sub Categories</option>
-              </select>
             </div>
           </div>
         </div>

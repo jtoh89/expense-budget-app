@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { formatCurrency } from "@/lib/currency";
 import {
   Chart as ChartJS,
@@ -36,48 +36,101 @@ const EXPENSE_CATEGORIES = [
   { name: "Others", color: "#6b7280", value: 21.7 },
 ];
 
-const SPENDING_TABLE_DATA = [
-  { subCategory: "Food & Dining", yin: 10000, jon: 8200, total: 18200, budgetLeft: 4000, budgetUsed: 82, isOver: false },
-  { subCategory: "Food & Dining", yin: 10000, jon: 8200, total: 18200, budgetLeft: 4000, budgetUsed: 82, isOver: true },
-  { subCategory: "Food & Dining", yin: 10000, jon: 8200, total: 18200, budgetLeft: 4000, budgetUsed: 82, isOver: false },
-  { subCategory: "Food & Dining", yin: 10000, jon: 8200, total: 18200, budgetLeft: 4000, budgetUsed: 82, isOver: false },
-];
+type BreakdownRow = {
+  subCategory: string;
+  byOwner: Record<string, number>;
+  total: number;
+  budget: number;
+  budgetLeft: number;
+  budgetUsed: number;
+  isOver: boolean;
+};
+
+const getBudgetBarColor = (pct: number) => {
+  if (pct < 100) return "bg-primary";
+  if (pct <= 110) return "bg-red-400";
+  return "bg-red-700";
+};
 
 const MONTHLY_INCOME = [12000, 13000, 14000, 15000, 16000, 17500];
 const MONTHLY_EXPENSE = [9500, 10000, 10500, 11000, 11500, 12000];
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun"];
 
-const MONTHLY_SUMMARIES = [
-  {
-    month: "January",
-    type: "detailed" as const,
-    rows: SPENDING_TABLE_DATA,
-  },
-  {
-    month: "February",
-    type: "summary" as const,
-    yin: 35000,
-    jon: 15000,
-    total: 50000,
-    leftoverBudget: -50,
-  },
-  {
-    month: "March",
-    type: "summary" as const,
-    yin: 35000,
-    jon: 15000,
-    total: 50000,
-    leftoverBudget: -50,
-  },
-];
-
 export default function DashboardPage() {
   const [selectedYear, setSelectedYear] = useState("2026");
-  const [expandedMonths, setExpandedMonths] = useState<Record<string, boolean>>({
-    January: true,
-    February: true,
-    March: true,
-  });
+  const [expandedMonths, setExpandedMonths] = useState<Record<string, boolean>>({});
+  const [recentMonthBreakdown, setRecentMonthBreakdown] = useState<{
+    monthName: string;
+    year: number;
+    month: number;
+    owners: string[];
+    rows: BreakdownRow[];
+    totals: { byOwner: Record<string, number>; total: number; budget: number; budgetLeft: number; budgetUsed: number };
+  } | null>(null);
+  const [recentMonthLoading, setRecentMonthLoading] = useState(true);
+  const [recentMonthError, setRecentMonthError] = useState<string | null>(null);
+
+  const [monthlyBreakdowns, setMonthlyBreakdowns] = useState<{
+    owners: string[];
+    months: { month: number; monthName: string; rows: BreakdownRow[]; totals: { byOwner: Record<string, number>; total: number; budget: number; budgetLeft: number; budgetUsed: number } }[];
+    ytd: { rows: BreakdownRow[]; totals: { byOwner: Record<string, number>; total: number; budget: number; budgetLeft: number; budgetUsed: number } };
+  } | null>(null);
+  const [monthlyBreakdownsLoading, setMonthlyBreakdownsLoading] = useState(true);
+  const [monthlyBreakdownsError, setMonthlyBreakdownsError] = useState<string | null>(null);
+
+  const fetchRecentMonthBreakdown = useCallback(async () => {
+    const yearNum = parseInt(selectedYear, 10);
+    const now = new Date();
+    const month = yearNum === now.getFullYear() ? now.getMonth() + 1 : 12;
+
+    setRecentMonthLoading(true);
+    setRecentMonthError(null);
+    try {
+      const res = await fetch(
+        `/api/dashboard/subcategory-breakdown?year=${yearNum}&month=${month}`
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to fetch");
+      setRecentMonthBreakdown(data);
+    } catch (err) {
+      setRecentMonthError(err instanceof Error ? err.message : "Failed to load");
+      setRecentMonthBreakdown(null);
+    } finally {
+      setRecentMonthLoading(false);
+    }
+  }, [selectedYear]);
+
+  const fetchMonthlyBreakdowns = useCallback(async () => {
+    const yearNum = parseInt(selectedYear, 10);
+    setMonthlyBreakdownsLoading(true);
+    setMonthlyBreakdownsError(null);
+    try {
+      const res = await fetch(`/api/dashboard/monthly-breakdowns?year=${yearNum}`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to fetch");
+      setMonthlyBreakdowns(data);
+      setExpandedMonths(() => {
+        const next: Record<string, boolean> = {};
+        for (const m of data.months ?? []) {
+          next[m.monthName] = (m.rows?.length ?? 0) > 0;
+        }
+        return next;
+      });
+    } catch (err) {
+      setMonthlyBreakdownsError(err instanceof Error ? err.message : "Failed to load");
+      setMonthlyBreakdowns(null);
+    } finally {
+      setMonthlyBreakdownsLoading(false);
+    }
+  }, [selectedYear]);
+
+  useEffect(() => {
+    fetchRecentMonthBreakdown();
+  }, [fetchRecentMonthBreakdown]);
+
+  useEffect(() => {
+    fetchMonthlyBreakdowns();
+  }, [fetchMonthlyBreakdowns]);
 
   const pieData = {
     labels: EXPENSE_CATEGORIES.map((c) => c.name),
@@ -133,15 +186,6 @@ export default function DashboardPage() {
     },
   };
 
-  const tableTotals = SPENDING_TABLE_DATA.reduce(
-    (acc, row) => ({
-      yin: acc.yin + row.yin,
-      jon: acc.jon + row.jon,
-      total: acc.total + row.total,
-      budgetLeft: acc.budgetLeft + row.budgetLeft,
-    }),
-    { yin: 0, jon: 0, total: 0, budgetLeft: 0 }
-  );
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-8">
@@ -159,99 +203,116 @@ export default function DashboardPage() {
           </select>
         </div>
         <p className="mb-6 text-xl font-bold text-gray-800">
-          Recent Month Spending (March {selectedYear})
+          Recent Month Spending ({recentMonthBreakdown?.monthName ?? "—"} {selectedYear})
         </p>
 
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-gray-50">
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                  Sub Category
-                </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                  Yin
-                </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                  Jon
-                </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                  Total
-                </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                  Budget Left
-                </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                  Budget Usage
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {SPENDING_TABLE_DATA.map((row, i) => (
-                <tr
-                  key={i}
-                  className="border-t border-gray-100 hover:bg-gray-50"
-                >
-                  <td className="px-4 py-3 text-sm text-gray-700">
-                    {row.subCategory}
+          {recentMonthLoading ? (
+            <div className="flex justify-center py-12">
+              <p className="text-gray-500">Loading...</p>
+            </div>
+          ) : recentMonthError ? (
+            <div className="flex justify-center py-12">
+              <p className="text-red-600">{recentMonthError}</p>
+            </div>
+          ) : recentMonthBreakdown && recentMonthBreakdown.rows.length > 0 ? (
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50">
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                    Sub Category
+                  </th>
+                  {recentMonthBreakdown.owners.map((owner) => (
+                    <th key={owner} className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                      {owner}
+                    </th>
+                  ))}
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                    Total
+                  </th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                    Monthly Budget
+                  </th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                    Budget Left
+                  </th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                    Budget Usage
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentMonthBreakdown.rows.map((row, i) => (
+                  <tr key={i} className="border-t border-gray-100 hover:bg-gray-50">
+                    <td className="px-4 py-3 text-sm text-gray-700">
+                      {row.subCategory}
+                    </td>
+                    {recentMonthBreakdown.owners.map((owner) => (
+                      <td key={owner} className="px-4 py-3 text-sm text-gray-700">
+                        {formatCurrency(row.byOwner[owner] ?? 0)}
+                      </td>
+                    ))}
+                    <td className="px-4 py-3 text-sm text-gray-700">
+                      {formatCurrency(row.total)}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-700">
+                      {formatCurrency(row.budget)}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-700">
+                      {formatCurrency(row.budgetLeft)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="h-2 flex-1 max-w-[100px] overflow-hidden rounded-full bg-gray-200">
+                          <div
+                            className={`h-full rounded-full ${getBudgetBarColor(row.budgetUsed)}`}
+                            style={{ width: `${Math.min(row.budgetUsed, 100)}%` }}
+                          />
+                        </div>
+                        <span className="text-xs text-gray-500">
+                          {row.budgetUsed}% used
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                <tr className="border-t border-gray-200 bg-gray-50 font-semibold">
+                  <td className="px-4 py-3 text-sm text-gray-800">TOTAL</td>
+                  {recentMonthBreakdown.owners.map((owner) => (
+                    <td key={owner} className="px-4 py-3 text-sm text-gray-800">
+                      {formatCurrency(recentMonthBreakdown.totals.byOwner[owner] ?? 0)}
+                    </td>
+                  ))}
+                  <td className="px-4 py-3 text-sm text-gray-800">
+                    {formatCurrency(recentMonthBreakdown.totals.total)}
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-700">
-                    {formatCurrency(row.yin)}
+                  <td className="px-4 py-3 text-sm text-gray-800">
+                    {formatCurrency(recentMonthBreakdown.totals.budget)}
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-700">
-                    {formatCurrency(row.jon)}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-700">
-                    {formatCurrency(row.total)}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-700">
-                    {formatCurrency(row.budgetLeft)}
+                  <td className="px-4 py-3 text-sm text-gray-800">
+                    {formatCurrency(recentMonthBreakdown.totals.budgetLeft)}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <div className="h-2 flex-1 max-w-[100px] overflow-hidden rounded-full bg-gray-200">
                         <div
-                          className={`h-full rounded-full ${
-                            row.isOver ? "bg-red-500" : "bg-primary"
-                          }`}
-                          style={{ width: `${row.budgetUsed}%` }}
+                          className={`h-full rounded-full ${getBudgetBarColor(recentMonthBreakdown.totals.budgetUsed)}`}
+                          style={{ width: `${Math.min(recentMonthBreakdown.totals.budgetUsed, 100)}%` }}
                         />
                       </div>
                       <span className="text-xs text-gray-500">
-                        {row.budgetUsed}% used
+                        {recentMonthBreakdown.totals.budgetUsed}% used
                       </span>
                     </div>
                   </td>
                 </tr>
-              ))}
-              <tr className="border-t border-gray-200 bg-red-50/50 font-semibold">
-                <td className="px-4 py-3 text-sm text-gray-800">TOTAL</td>
-                <td className="px-4 py-3 text-sm text-gray-800">
-                  {formatCurrency(tableTotals.yin)}
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-800">
-                  {formatCurrency(tableTotals.jon)}
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-800">
-                  {formatCurrency(tableTotals.total)}
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-800">
-                  {formatCurrency(tableTotals.budgetLeft)}
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <div className="h-2 flex-1 max-w-[100px] overflow-hidden rounded-full bg-gray-200">
-                      <div
-                        className="h-full rounded-full bg-primary"
-                        style={{ width: "82%" }}
-                      />
-                    </div>
-                    <span className="text-xs text-gray-500">82% used</span>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+              </tbody>
+            </table>
+          ) : (
+            <div className="py-12 text-center text-gray-500">
+              No transactions for this month
+            </div>
+          )}
         </div>
       </div>
 
@@ -284,95 +345,112 @@ export default function DashboardPage() {
         </div>
 
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-          <table className="w-full">
-            <thead>
-              <tr className="bg-gray-50">
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                  Sub Category
-                </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                  Yin
-                </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                  Jon
-                </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                  Total
-                </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                  Budget Left
-                </th>
-                <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                  Budget Usage
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {SPENDING_TABLE_DATA.map((row, i) => (
-                <tr
-                  key={i}
-                  className="border-t border-gray-100 hover:bg-gray-50"
-                >
-                  <td className="px-4 py-3 text-sm text-gray-700">
-                    {row.subCategory}
+          {monthlyBreakdownsLoading ? (
+            <div className="flex justify-center py-12">
+              <p className="text-gray-500">Loading...</p>
+            </div>
+          ) : monthlyBreakdownsError ? (
+            <div className="flex justify-center py-12">
+              <p className="text-red-600">{monthlyBreakdownsError}</p>
+            </div>
+          ) : monthlyBreakdowns?.ytd && monthlyBreakdowns.ytd.rows.length > 0 ? (
+            <table className="w-full">
+              <thead>
+                <tr className="bg-gray-50">
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                    Sub Category
+                  </th>
+                  {monthlyBreakdowns.owners.map((owner) => (
+                    <th key={owner} className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                      {owner}
+                    </th>
+                  ))}
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                    Total
+                  </th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                    YTD Budget
+                  </th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                    Budget Left
+                  </th>
+                  <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
+                    Budget Usage
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                {monthlyBreakdowns.ytd.rows.map((row, i) => (
+                  <tr key={i} className="border-t border-gray-100 hover:bg-gray-50">
+                    <td className="px-4 py-3 text-sm text-gray-700">
+                      {row.subCategory}
+                    </td>
+                    {monthlyBreakdowns.owners.map((owner) => (
+                      <td key={owner} className="px-4 py-3 text-sm text-gray-700">
+                        {formatCurrency(row.byOwner[owner] ?? 0)}
+                      </td>
+                    ))}
+                    <td className="px-4 py-3 text-sm text-gray-700">
+                      {formatCurrency(row.total)}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-700">
+                      {formatCurrency(row.budget)}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-gray-700">
+                      {formatCurrency(row.budgetLeft)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-2">
+                        <div className="h-2 flex-1 max-w-[100px] overflow-hidden rounded-full bg-gray-200">
+                          <div
+                            className={`h-full rounded-full ${getBudgetBarColor(row.budgetUsed)}`}
+                            style={{ width: `${Math.min(row.budgetUsed, 100)}%` }}
+                          />
+                        </div>
+                        <span className="text-xs text-gray-500">
+                          {row.budgetUsed}% used
+                        </span>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                <tr className="border-t border-gray-200 bg-gray-50 font-semibold">
+                  <td className="px-4 py-3 text-sm text-gray-800">TOTAL</td>
+                  {monthlyBreakdowns.owners.map((owner) => (
+                    <td key={owner} className="px-4 py-3 text-sm text-gray-800">
+                      {formatCurrency(monthlyBreakdowns.ytd.totals.byOwner[owner] ?? 0)}
+                    </td>
+                  ))}
+                  <td className="px-4 py-3 text-sm text-gray-800">
+                    {formatCurrency(monthlyBreakdowns.ytd.totals.total)}
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-700">
-                    {formatCurrency(row.yin)}
+                  <td className="px-4 py-3 text-sm text-gray-800">
+                    {formatCurrency(monthlyBreakdowns.ytd.totals.budget)}
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-700">
-                    {formatCurrency(row.jon)}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-700">
-                    {formatCurrency(row.total)}
-                  </td>
-                  <td className="px-4 py-3 text-sm text-gray-700">
-                    {formatCurrency(row.budgetLeft)}
+                  <td className="px-4 py-3 text-sm text-gray-800">
+                    {formatCurrency(monthlyBreakdowns.ytd.totals.budgetLeft)}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
                       <div className="h-2 flex-1 max-w-[100px] overflow-hidden rounded-full bg-gray-200">
                         <div
-                          className={`h-full rounded-full ${
-                            row.isOver ? "bg-red-500" : "bg-primary"
-                          }`}
-                          style={{ width: `${row.budgetUsed}%` }}
+                          className={`h-full rounded-full ${getBudgetBarColor(monthlyBreakdowns.ytd.totals.budgetUsed)}`}
+                          style={{ width: `${Math.min(monthlyBreakdowns.ytd.totals.budgetUsed, 100)}%` }}
                         />
                       </div>
                       <span className="text-xs text-gray-500">
-                        {row.budgetUsed}% used
+                        {monthlyBreakdowns.ytd.totals.budgetUsed}% used
                       </span>
                     </div>
                   </td>
                 </tr>
-              ))}
-              <tr className="border-t border-gray-200 bg-red-50/50 font-semibold">
-                <td className="px-4 py-3 text-sm text-gray-800">TOTAL</td>
-                <td className="px-4 py-3 text-sm text-gray-800">
-                  {formatCurrency(tableTotals.yin)}
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-800">
-                  {formatCurrency(tableTotals.jon)}
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-800">
-                  {formatCurrency(tableTotals.total)}
-                </td>
-                <td className="px-4 py-3 text-sm text-gray-800">
-                  {formatCurrency(tableTotals.budgetLeft)}
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <div className="h-2 flex-1 max-w-[100px] overflow-hidden rounded-full bg-gray-200">
-                      <div
-                        className="h-full rounded-full bg-primary"
-                        style={{ width: "82%" }}
-                      />
-                    </div>
-                    <span className="text-xs text-gray-500">82% used</span>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+              </tbody>
+            </table>
+          ) : (
+            <div className="py-12 text-center text-gray-500">
+              No transactions for this year
+            </div>
+          )}
         </div>
       </div>
 
@@ -382,151 +460,183 @@ export default function DashboardPage() {
           Monthly Spending Summaries for {selectedYear}
         </h2>
         <div className="space-y-4">
-          {MONTHLY_SUMMARIES.map((summary) => (
-            <div
-              key={summary.month}
-              className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
-            >
-              <button
-                onClick={() =>
-                  setExpandedMonths((prev) => ({
-                    ...prev,
-                    [summary.month]: !prev[summary.month],
-                  }))
-                }
-                className="flex w-full items-center justify-between px-6 py-4 text-left hover:bg-gray-50"
+          {monthlyBreakdownsLoading ? (
+            <div className="flex justify-center py-12">
+              <p className="text-gray-500">Loading...</p>
+            </div>
+          ) : monthlyBreakdownsError ? (
+            <div className="flex justify-center py-12">
+              <p className="text-red-600">{monthlyBreakdownsError}</p>
+            </div>
+          ) : (
+            (monthlyBreakdowns?.months ?? []).map((m) => (
+              <div
+                key={m.month}
+                className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm"
               >
-                <span className="font-semibold text-gray-800">
-                  {summary.month}
-                </span>
-                <svg
-                  className={`h-5 w-5 text-gray-500 transition-transform ${
-                    expandedMonths[summary.month] ? "rotate-180" : ""
-                  }`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
+                <button
+                  onClick={() =>
+                    setExpandedMonths((prev) => ({
+                      ...prev,
+                      [m.monthName]: !prev[m.monthName],
+                    }))
+                  }
+                  className="flex w-full items-center justify-between px-6 py-4 text-left hover:bg-gray-50"
                 >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M19 9l-7 7-7-7"
-                  />
-                </svg>
-              </button>
-              {expandedMonths[summary.month] && (
-                <div className="border-t border-gray-200 px-6 pb-6 pt-2">
-                  {summary.type === "detailed" ? (
-                    <table className="w-full">
-                      <thead>
-                        <tr className="bg-gray-50">
-                          <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
-                            Sub Category
-                          </th>
-                          <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
-                            Yin
-                          </th>
-                          <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
-                            Jon
-                          </th>
-                          <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
-                            Total
-                          </th>
-                          <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
-                            Budget Left
-                          </th>
-                          <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
-                            Budget Usage
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {summary.rows.map((row, i) => (
-                          <tr
-                            key={i}
-                            className="border-t border-gray-100 hover:bg-gray-50"
-                          >
-                            <td className="px-4 py-2 text-sm text-gray-700">
-                              {row.subCategory}
+                  <span className="font-semibold text-gray-800">
+                    {m.monthName}
+                  </span>
+                  <svg
+                    className={`h-5 w-5 text-gray-500 transition-transform ${
+                      expandedMonths[m.monthName] ? "rotate-180" : ""
+                    }`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M19 9l-7 7-7-7"
+                    />
+                  </svg>
+                </button>
+                {expandedMonths[m.monthName] && (
+                  <div className="border-t border-gray-200 px-6 pb-6 pt-2">
+                    {m.rows.length > 0 ? (
+                      <table className="w-full">
+                        <thead>
+                          <tr className="bg-gray-50">
+                            <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
+                              Sub Category
+                            </th>
+                            {(monthlyBreakdowns?.owners ?? []).map((owner) => (
+                              <th key={owner} className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
+                                {owner}
+                              </th>
+                            ))}
+                            <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
+                              Total
+                            </th>
+                            <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
+                              Monthly Budget
+                            </th>
+                            <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
+                              Budget Left
+                            </th>
+                            <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
+                              Budget Usage
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {m.rows.map((row, i) => (
+                            <tr
+                              key={i}
+                              className="border-t border-gray-100 hover:bg-gray-50"
+                            >
+                              <td className="px-4 py-2 text-sm text-gray-700">
+                                {row.subCategory}
+                              </td>
+                              {(monthlyBreakdowns?.owners ?? []).map((owner) => (
+                                <td key={owner} className="px-4 py-2 text-sm text-gray-700">
+                                  {formatCurrency(row.byOwner[owner] ?? 0)}
+                                </td>
+                              ))}
+                              <td className="px-4 py-2 text-sm text-gray-700">
+                                {formatCurrency(row.total)}
+                              </td>
+                              <td className="px-4 py-2 text-sm text-gray-700">
+                                {formatCurrency(row.budget)}
+                              </td>
+                              <td className="px-4 py-2 text-sm text-gray-700">
+                                {formatCurrency(row.budgetLeft)}
+                              </td>
+                              <td className="px-4 py-2">
+                                <div className="flex items-center gap-2">
+                                  <div className="h-2 flex-1 max-w-[80px] overflow-hidden rounded-full bg-gray-200">
+                                    <div
+                                      className={`h-full rounded-full ${getBudgetBarColor(row.budgetUsed)}`}
+                                      style={{ width: `${Math.min(row.budgetUsed, 100)}%` }}
+                                    />
+                                  </div>
+                                  <span className="text-xs text-gray-500">
+                                    {row.budgetUsed}% used
+                                  </span>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                          <tr className="border-t border-gray-200 bg-gray-50 font-semibold">
+                            <td className="px-4 py-2 text-sm text-gray-800">TOTAL</td>
+                            {(monthlyBreakdowns?.owners ?? []).map((owner) => (
+                              <td key={owner} className="px-4 py-2 text-sm text-gray-800">
+                                {formatCurrency(m.totals.byOwner[owner] ?? 0)}
+                              </td>
+                            ))}
+                            <td className="px-4 py-2 text-sm text-gray-800">
+                              {formatCurrency(m.totals.total)}
                             </td>
-                            <td className="px-4 py-2 text-sm text-gray-700">
-                              {formatCurrency(row.yin)}
+                            <td className="px-4 py-2 text-sm text-gray-800">
+                              {formatCurrency(m.totals.budget)}
                             </td>
-                            <td className="px-4 py-2 text-sm text-gray-700">
-                              {formatCurrency(row.jon)}
-                            </td>
-                            <td className="px-4 py-2 text-sm text-gray-700">
-                              {formatCurrency(row.total)}
-                            </td>
-                            <td className="px-4 py-2 text-sm text-gray-700">
-                              {formatCurrency(row.budgetLeft)}
+                            <td className="px-4 py-2 text-sm text-gray-800">
+                              {formatCurrency(m.totals.budgetLeft)}
                             </td>
                             <td className="px-4 py-2">
-                              <div className="flex items-center gap-2">
-                                <div className="h-2 flex-1 max-w-[80px] overflow-hidden rounded-full bg-gray-200">
-                                  <div
-                                    className={`h-full rounded-full ${
-                                      row.isOver ? "bg-red-500" : "bg-primary"
-                                    }`}
-                                    style={{ width: `${row.budgetUsed}%` }}
-                                  />
-                                </div>
-                                <span className="text-xs text-gray-500">
-                                  {row.budgetUsed}% used
-                                </span>
-                              </div>
+                              <span className="text-xs text-gray-500">
+                                {m.totals.budgetUsed}% used
+                              </span>
                             </td>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  ) : (
-                    <table className="w-full">
-                      <thead>
-                        <tr className="bg-gray-50">
-                          <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
-                            Yin
-                          </th>
-                          <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
-                            Jon
-                          </th>
-                          <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
-                            Total
-                          </th>
-                          <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
-                            Budget Left
-                          </th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr className="border-t border-gray-100 hover:bg-gray-50">
-                          <td className="px-4 py-2 text-sm text-gray-700">
-                            {formatCurrency(summary.yin!)}
-                          </td>
-                          <td className="px-4 py-2 text-sm text-gray-700">
-                            {formatCurrency(summary.jon!)}
-                          </td>
-                          <td className="px-4 py-2 text-sm text-gray-700">
-                            {formatCurrency(summary.total!)}
-                          </td>
-                          <td
-                            className={`px-4 py-2 text-sm font-medium ${
-                              (summary.leftoverBudget ?? 0) < 0
-                                ? "text-red-600"
-                                : "text-gray-700"
-                            }`}
-                          >
-                            {formatCurrency(summary.leftoverBudget ?? 0)}
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  )}
-                </div>
-              )}
-            </div>
-          ))}
+                        </tbody>
+                      </table>
+                    ) : (
+                      <table className="w-full">
+                        <thead>
+                          <tr className="bg-gray-50">
+                            {(monthlyBreakdowns?.owners ?? []).map((owner) => (
+                              <th key={owner} className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
+                                {owner}
+                              </th>
+                            ))}
+                            <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
+                              Total
+                            </th>
+                            <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
+                              Budget Left
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr className="border-t border-gray-100 hover:bg-gray-50">
+                            {(monthlyBreakdowns?.owners ?? []).map((owner) => (
+                              <td key={owner} className="px-4 py-2 text-sm text-gray-700">
+                                {formatCurrency(m.totals.byOwner[owner] ?? 0)}
+                              </td>
+                            ))}
+                            <td className="px-4 py-2 text-sm text-gray-700">
+                              {formatCurrency(m.totals.total)}
+                            </td>
+                            <td
+                              className={`px-4 py-2 text-sm font-medium ${
+                                (m.totals.budgetLeft ?? 0) < 0
+                                  ? "text-red-600"
+                                  : "text-gray-700"
+                              }`}
+                            >
+                              {formatCurrency(m.totals.budgetLeft ?? 0)}
+                            </td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>

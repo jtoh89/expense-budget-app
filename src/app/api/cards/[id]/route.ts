@@ -20,7 +20,7 @@ export async function GET(
     const { id } = await params;
     const { data, error } = await supabase
       .from("cards")
-      .select("id, owner, card_name, date_header, description_header, debit_header, credit_header, single_column")
+      .select("id, owner, card_name, date_header, description_header, debit_header, credit_header, is_inverted")
       .eq("id", id)
       .single();
 
@@ -36,7 +36,7 @@ export async function GET(
       descriptionHeader: data.description_header,
       debitHeader: data.debit_header,
       creditHeader: data.credit_header,
-      singleColumn: data.single_column ?? false,
+      singleColumn: data.is_inverted ?? false,
     });
   } catch (error) {
     console.error("GET /api/cards/[id] error:", error);
@@ -73,7 +73,7 @@ export async function PATCH(
     if (body.descriptionHeader != null) updates.description_header = String(body.descriptionHeader).trim();
     if (body.debitHeader !== undefined) updates.debit_header = body.debitHeader ? String(body.debitHeader).trim() : null;
     if (body.creditHeader !== undefined) updates.credit_header = body.creditHeader ? String(body.creditHeader).trim() : null;
-    if (body.singleColumn != null) updates.single_column = body.singleColumn === true;
+    if (body.singleColumn != null) updates.is_inverted = body.singleColumn === true;
 
     if (Object.keys(updates).length === 0) {
       return NextResponse.json({ error: "No fields to update" }, { status: 400 });

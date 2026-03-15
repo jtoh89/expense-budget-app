@@ -53,10 +53,10 @@ export default function AddNewCardModal({
     const form = e.currentTarget;
     const owner = (form.elements.namedItem("owner") as HTMLSelectElement).value;
     const cardName = (form.elements.namedItem("cardName") as HTMLInputElement).value;
-    const dateHeader = (form.elements.namedItem("dateHeader") as HTMLInputElement).value;
-    const descriptionHeader = (form.elements.namedItem("descriptionHeader") as HTMLInputElement).value;
-    const debitHeader = singleColumn ? null : (form.elements.namedItem("debitHeader") as HTMLInputElement)?.value ?? null;
-    const creditHeader = singleColumn ? null : (form.elements.namedItem("creditHeader") as HTMLInputElement)?.value ?? null;
+    const dateHeader = ((form.elements.namedItem("dateHeader") as HTMLInputElement).value || DEFAULT_HEADERS.dateHeader).trim();
+    const descriptionHeader = ((form.elements.namedItem("descriptionHeader") as HTMLInputElement).value || DEFAULT_HEADERS.descriptionHeader).trim();
+    const debitHeader = singleColumn ? null : ((form.elements.namedItem("debitHeader") as HTMLInputElement)?.value || DEFAULT_HEADERS.debitHeader).trim() || null;
+    const creditHeader = singleColumn ? null : ((form.elements.namedItem("creditHeader") as HTMLInputElement)?.value || DEFAULT_HEADERS.creditHeader).trim() || null;
 
     if (owner && cardName && dateHeader && descriptionHeader && (!singleColumn ? debitHeader && creditHeader : true)) {
       const cardData = {
@@ -165,10 +165,9 @@ export default function AddNewCardModal({
                   id="dateHeader"
                   name="dateHeader"
                   type="text"
-                  defaultValue={editCard?.dateHeader ?? DEFAULT_HEADERS.dateHeader}
-                  required
-                  placeholder="Date"
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  defaultValue={editCard?.dateHeader ?? ""}
+                  placeholder="Enter Date"
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 placeholder-gray-400 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                 />
               </div>
               <div>
@@ -179,10 +178,9 @@ export default function AddNewCardModal({
                   id="descriptionHeader"
                   name="descriptionHeader"
                   type="text"
-                  defaultValue={editCard?.descriptionHeader ?? DEFAULT_HEADERS.descriptionHeader}
-                  required
-                  placeholder="Description"
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  defaultValue={editCard?.descriptionHeader ?? ""}
+                  placeholder="Enter Description"
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 placeholder-gray-400 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                 />
               </div>
               {!singleColumn && (
@@ -195,10 +193,9 @@ export default function AddNewCardModal({
                       id="debitHeader"
                       name="debitHeader"
                       type="text"
-                      defaultValue={editCard?.debitHeader ?? DEFAULT_HEADERS.debitHeader}
-                      required
-                      placeholder="Debit"
-                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                      defaultValue={editCard?.debitHeader ?? ""}
+                      placeholder="Enter Debit"
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 placeholder-gray-400 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                     />
                   </div>
                   <div>
@@ -209,10 +206,9 @@ export default function AddNewCardModal({
                       id="creditHeader"
                       name="creditHeader"
                       type="text"
-                      defaultValue={editCard?.creditHeader ?? DEFAULT_HEADERS.creditHeader}
-                      required
-                      placeholder="Credit"
-                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                      defaultValue={editCard?.creditHeader ?? ""}
+                      placeholder="Enter Credit"
+                      className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 placeholder-gray-400 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                     />
                   </div>
                 </>
