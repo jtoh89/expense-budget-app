@@ -276,7 +276,7 @@ export default function DashboardPage() {
                     </td>
                   </tr>
                 ))}
-                <tr className="border-t border-gray-200 bg-gray-50 font-semibold">
+                <tr className="border-t border-gray-200 bg-green-50 font-semibold">
                   <td className="px-4 py-3 text-sm text-gray-800">TOTAL</td>
                   {recentMonthBreakdown.owners.map((owner) => (
                     <td key={owner} className="px-4 py-3 text-sm text-gray-800">
@@ -414,7 +414,7 @@ export default function DashboardPage() {
                     </td>
                   </tr>
                 ))}
-                <tr className="border-t border-gray-200 bg-gray-50 font-semibold">
+                <tr className="border-t border-gray-200 bg-green-50 font-semibold">
                   <td className="px-4 py-3 text-sm text-gray-800">TOTAL</td>
                   {monthlyBreakdowns.owners.map((owner) => (
                     <td key={owner} className="px-4 py-3 text-sm text-gray-800">
@@ -508,24 +508,24 @@ export default function DashboardPage() {
                       <table className="w-full">
                         <thead>
                           <tr className="bg-gray-50">
-                            <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
+                            <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
                               Sub Category
                             </th>
                             {(monthlyBreakdowns?.owners ?? []).map((owner) => (
-                              <th key={owner} className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
+                              <th key={owner} className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
                                 {owner}
                               </th>
                             ))}
-                            <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
+                            <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
                               Total
                             </th>
-                            <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
+                            <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
                               Monthly Budget
                             </th>
-                            <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
+                            <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
                               Budget Left
                             </th>
-                            <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
+                            <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
                               Budget Usage
                             </th>
                           </tr>
@@ -536,24 +536,24 @@ export default function DashboardPage() {
                               key={i}
                               className="border-t border-gray-100 hover:bg-gray-50"
                             >
-                              <td className="px-4 py-2 text-sm text-gray-700">
+                              <td className="px-4 py-3 text-sm text-gray-700">
                                 {row.subCategory}
                               </td>
                               {(monthlyBreakdowns?.owners ?? []).map((owner) => (
-                                <td key={owner} className="px-4 py-2 text-sm text-gray-700">
+                                <td key={owner} className="px-4 py-3 text-sm text-gray-700">
                                   {formatCurrency(row.byOwner[owner] ?? 0)}
                                 </td>
                               ))}
-                              <td className="px-4 py-2 text-sm text-gray-700">
+                              <td className="px-4 py-3 text-sm text-gray-700">
                                 {formatCurrency(row.total)}
                               </td>
-                              <td className="px-4 py-2 text-sm text-gray-700">
+                              <td className="px-4 py-3 text-sm text-gray-700">
                                 {formatCurrency(row.budget)}
                               </td>
-                              <td className="px-4 py-2 text-sm text-gray-700">
+                              <td className="px-4 py-3 text-sm text-gray-700">
                                 {formatCurrency(row.budgetLeft)}
                               </td>
-                              <td className="px-4 py-2">
+                              <td className="px-4 py-3">
                                 <div className="flex items-center gap-2">
                                   <div className="h-2 flex-1 max-w-[80px] overflow-hidden rounded-full bg-gray-200">
                                     <div
@@ -568,23 +568,23 @@ export default function DashboardPage() {
                               </td>
                             </tr>
                           ))}
-                          <tr className="border-t border-gray-200 bg-gray-50 font-semibold">
-                            <td className="px-4 py-2 text-sm text-gray-800">TOTAL</td>
+                          <tr className="border-t border-gray-200 bg-green-50 font-semibold">
+                            <td className="px-4 py-3 text-sm text-gray-800">TOTAL</td>
                             {(monthlyBreakdowns?.owners ?? []).map((owner) => (
-                              <td key={owner} className="px-4 py-2 text-sm text-gray-800">
+                              <td key={owner} className="px-4 py-3 text-sm text-gray-800">
                                 {formatCurrency(m.totals.byOwner[owner] ?? 0)}
                               </td>
                             ))}
-                            <td className="px-4 py-2 text-sm text-gray-800">
+                            <td className="px-4 py-3 text-sm text-gray-800">
                               {formatCurrency(m.totals.total)}
                             </td>
-                            <td className="px-4 py-2 text-sm text-gray-800">
+                            <td className="px-4 py-3 text-sm text-gray-800">
                               {formatCurrency(m.totals.budget)}
                             </td>
-                            <td className="px-4 py-2 text-sm text-gray-800">
+                            <td className="px-4 py-3 text-sm text-gray-800">
                               {formatCurrency(m.totals.budgetLeft)}
                             </td>
-                            <td className="px-4 py-2">
+                            <td className="px-4 py-3">
                               <span className="text-xs text-gray-500">
                                 {m.totals.budgetUsed}% used
                               </span>
@@ -597,14 +597,14 @@ export default function DashboardPage() {
                         <thead>
                           <tr className="bg-gray-50">
                             {(monthlyBreakdowns?.owners ?? []).map((owner) => (
-                              <th key={owner} className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
+                              <th key={owner} className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
                                 {owner}
                               </th>
                             ))}
-                            <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
+                            <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
                               Total
                             </th>
-                            <th className="px-4 py-2 text-left text-sm font-semibold text-gray-700">
+                            <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
                               Budget Left
                             </th>
                           </tr>
@@ -612,15 +612,15 @@ export default function DashboardPage() {
                         <tbody>
                           <tr className="border-t border-gray-100 hover:bg-gray-50">
                             {(monthlyBreakdowns?.owners ?? []).map((owner) => (
-                              <td key={owner} className="px-4 py-2 text-sm text-gray-700">
-                                {formatCurrency(m.totals.byOwner[owner] ?? 0)}
+                              <td key={owner} className="px-4 py-3 text-sm text-gray-700">
+                                  {formatCurrency(m.totals.byOwner[owner] ?? 0)}
+                                </td>
+                              ))}
+                            <td className="px-4 py-3 text-sm text-gray-700">
+                                {formatCurrency(m.totals.total)}
                               </td>
-                            ))}
-                            <td className="px-4 py-2 text-sm text-gray-700">
-                              {formatCurrency(m.totals.total)}
-                            </td>
-                            <td
-                              className={`px-4 py-2 text-sm font-medium ${
+                              <td
+                                className={`px-4 py-3 text-sm font-medium ${
                                 (m.totals.budgetLeft ?? 0) < 0
                                   ? "text-red-600"
                                   : "text-gray-700"

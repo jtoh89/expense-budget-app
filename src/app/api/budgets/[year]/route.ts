@@ -3,9 +3,10 @@ import { supabase } from "@/lib/db";
 
 /**
  * GET /api/budgets/[year]
+ * Query: ?owner=yin (optional - default 'default')
  */
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ year: string }> }
 ) {
   if (!supabase) {
@@ -22,10 +23,15 @@ export async function GET(
       return NextResponse.json({ error: "Invalid year" }, { status: 400 });
     }
 
+    const { searchParams } = new URL(request.url);
+    const owner = searchParams.get("owner") || "default";
+
+    const id = `${owner}-${yearNum}`;
+
     const { data, error } = await supabase
       .from("budgets")
-      .select("year, annual_income, other_income, estimated_taxes")
-      .eq("year", yearNum)
+      .select("id, owner, year, annual_income, other_income, estimated_taxes")
+      .eq("id", id)
       .single();
 
     if (error) {
@@ -36,6 +42,8 @@ export async function GET(
     }
 
     return NextResponse.json({
+      id: data.id,
+      owner: data.owner,
       year: data.year,
       annualIncome: Number(data.annual_income),
       otherIncome: Number(data.other_income),
@@ -52,7 +60,7 @@ export async function GET(
 
 /**
  * PATCH /api/budgets/[year]
- * Body: { annualIncome?, otherIncome?, estimatedTaxes? }
+ * Body: { owner?, annualIncome?, otherIncome?, estimatedTaxes? }
  */
 export async function PATCH(
   request: NextRequest,
@@ -73,22 +81,24 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const { annualIncome, otherIncome, estimatedTaxes } = body;
+    const { owner = "default", annualIncome, otherIncome, estimatedTaxes } = body;
 
-    const updates: Record<string, unknown> = {};
+    const id = `${owner}-${yearNum}`;
+
+    const updates: Record<string, unknown> = {
+      id,
+      owner,
+      year: yearNum,
+    };
     if (typeof annualIncome === "number") updates.annual_income = annualIncome;
     if (typeof otherIncome === "number") updates.other_income = otherIncome;
     if (typeof estimatedTaxes === "number") updates.estimated_taxes = estimatedTaxes;
 
-    if (Object.keys(updates).length === 0) {
-      return NextResponse.json({ error: "No fields to update" }, { status: 400 });
-    }
-
     const { error } = await supabase
       .from("budgets")
       .upsert(
-        { year: yearNum, ...updates },
-        { onConflict: "year" }
+        updates,
+        { onConflict: "id" }
       );
 
     if (error) throw error;

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { formatCurrency, formatCurrencyRounded, parseCurrencyInput } from "@/lib/currency";
+import AddBudgetItemModal from "@/components/AddBudgetItemModal";
 import {
   Chart as ChartJS,
   ArcElement,
@@ -138,6 +139,31 @@ export default function BudgetPage() {
   const [subChartDropdownOpen, setSubChartDropdownOpen] = useState(false);
   const categoryChartDropdownRef = useRef<HTMLDivElement>(null);
   const subChartDropdownRef = useRef<HTMLDivElement>(null);
+  const [selectedOwner, setSelectedOwner] = useState<string | null>("Jon");
+  const [owners, setOwners] = useState<string[]>([]);
+  const [ownersDropdownOpen, setOwnersDropdownOpen] = useState(false);
+  const ownersDropdownRef = useRef<HTMLDivElement>(null);
+  const [deletePending, setDeletePending] = useState<{
+    sectionName: string;
+    rowIdx: number;
+    row: CategoryRow;
+  } | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [addItemModalSection, setAddItemModalSection] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/cards")
+      .then((r) => r.json())
+      .then((data) => {
+        const cards = Array.isArray(data) ? data : [];
+        const ownerSet = new Set<string>();
+        for (const c of cards) {
+          if (c.owner) ownerSet.add(c.owner);
+        }
+        setOwners(Array.from(ownerSet).sort());
+      })
+      .catch(() => setOwners([]));
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -151,14 +177,20 @@ export default function BudgetPage() {
       ) {
         setSubChartDropdownOpen(false);
       }
+      if (ownersDropdownRef.current && !ownersDropdownRef.current.contains(e.target as Node)) {
+        setOwnersDropdownOpen(false);
+      }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const budgetOwner = selectedOwner ?? "Jon";
+
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/budgets")
+    const ownerParam = budgetOwner !== "default" ? `?owner=${encodeURIComponent(budgetOwner)}` : "";
+    fetch(`/api/budgets${ownerParam}`)
       .then((res) => res.json())
       .then((years: number[]) => {
         if (cancelled || !Array.isArray(years)) return;
@@ -175,12 +207,13 @@ export default function BudgetPage() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [budgetOwner]);
 
   useEffect(() => {
     let cancelled = false;
     setIncomeLoading(true);
-    fetch(`/api/budgets/${budgetYear}`)
+    const ownerParam = budgetOwner !== "default" ? `?owner=${encodeURIComponent(budgetOwner)}` : "";
+    fetch(`/api/budgets/${budgetYear}${ownerParam}`)
       .then((res) => res.json())
       .then((data) => {
         if (cancelled) return;
@@ -197,12 +230,13 @@ export default function BudgetPage() {
     return () => {
       cancelled = true;
     };
-  }, [budgetYear]);
+  }, [budgetYear, budgetOwner]);
 
   useEffect(() => {
     let cancelled = false;
     setAllocationsLoading(true);
-    fetch(`/api/budget-allocations?year=${budgetYear}`)
+    const ownerParam = budgetOwner !== "default" ? `&owner=${encodeURIComponent(budgetOwner)}` : "";
+    fetch(`/api/budget-allocations?year=${budgetYear}${ownerParam}`)
       .then((res) => res.json())
       .then((allocations: Record<string, { monthlyBudget: number; annualBudget: number | null; irsLimit: number | null; employerMatch: number | null }>) => {
         if (cancelled || !allocations || typeof allocations !== "object") return;
@@ -236,7 +270,7 @@ export default function BudgetPage() {
     return () => {
       cancelled = true;
     };
-  }, [budgetYear]);
+  }, [budgetYear, budgetOwner]);
 
   const parseMatchPct = (s: string | undefined): number => {
     if (!s || s === "—" || s === "-") return 0;
@@ -378,6 +412,72 @@ export default function BudgetPage() {
     );
   };
 
+  const openDeleteModal = (sectionName: string, rowIdx: number, row: CategoryRow) => {
+    setDeletePending({ sectionName, rowIdx, row });
+    setDeleteError(null);
+  };
+
+  const closeDeleteModal = () => {
+    setDeletePending(null);
+    setDeleteError(null);
+  };
+
+  const confirmDeleteBudgetItem = async () => {
+    if (!deletePending) return;
+    const { sectionName, rowIdx, row } = deletePending;
+    setDeleteError(null);
+
+    try {
+      const checkRes = await fetch(
+        `/api/transactions/has-for-subcategory?subcategoryId=${encodeURIComponent(row.subcategoryId)}&year=${budgetYear}&owner=${encodeURIComponent(budgetOwner)}`
+      );
+      const checkData = await checkRes.json();
+      if (!checkRes.ok) throw new Error(checkData.error || "Failed to check transactions");
+
+      if (checkData.hasTransactions) {
+        setDeleteError("Cannot delete: there are existing transactions for this subcategory, year, and owner. Remove or reassign those transactions first.");
+        return;
+      }
+
+      if (!row.subcategoryId.startsWith("new_")) {
+        const deleteRes = await fetch("/api/budget-allocations", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            subcategoryId: row.subcategoryId,
+            year: parseInt(budgetYear, 10),
+            owner: budgetOwner,
+          }),
+        });
+        if (!deleteRes.ok) {
+          const err = await deleteRes.json().catch(() => ({}));
+          throw new Error(err.error || "Failed to delete");
+        }
+      }
+
+      setCategoryRows((prev) =>
+        prev.map((s) =>
+          s.name === sectionName
+            ? { ...s, rows: s.rows.filter((_, i) => i !== rowIdx) }
+            : s
+        )
+      );
+      closeDeleteModal();
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Failed to delete");
+    }
+  };
+
+  const addCategoryRow = (sectionName: string, row: CategoryRow) => {
+    setCategoryRows((prev) =>
+      prev.map((s) =>
+        s.name === sectionName
+          ? { ...s, rows: [...s.rows, row] }
+          : s
+      )
+    );
+  };
+
   const enterEditMode = (sectionName: string) => {
     const section = categoryRows.find((s) => s.name === sectionName);
     if (!section || editingSections.includes(sectionName)) return;
@@ -406,6 +506,7 @@ export default function BudgetPage() {
               body: JSON.stringify({
                 subcategoryId: row.subcategoryId,
                 year: yearNum,
+                owner: budgetOwner,
                 monthlyBudget: row.monthly,
                 annualBudget: row.annual,
                 irsLimit: row.irsLimit ?? null,
@@ -465,6 +566,7 @@ export default function BudgetPage() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          owner: budgetOwner,
           annualIncome,
           otherIncome,
           estimatedTaxes,
@@ -498,8 +600,6 @@ export default function BudgetPage() {
     annualIncome + otherIncome - pretaxTotals.annual
   );
   const takeHomePay = Math.max(0, adjustedGrossIncome - estimatedTaxes);
-  const investmentsTotal = 123790;
-  const futureExpenseTotal = 83646;
 
   return (
     <div className="mx-auto max-w-7xl px-6 py-8">
@@ -525,6 +625,58 @@ export default function BudgetPage() {
                   <option value={budgetYear}>{budgetYear}</option>
                 )}
               </select>
+            </div>
+            <div className="relative" ref={ownersDropdownRef}>
+              <label className="mb-2 block text-sm font-medium text-gray-700">
+                Owners
+              </label>
+              <button
+                type="button"
+                onClick={() => setOwnersDropdownOpen((o) => !o)}
+                className="flex min-w-[140px] items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-left text-gray-800 shadow-sm hover:bg-gray-50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+              >
+                <span className="truncate">
+                  {selectedOwner ?? "All Owners"}
+                </span>
+                <svg className={`h-4 w-4 shrink-0 text-gray-500 transition-transform ${ownersDropdownOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+              {ownersDropdownOpen && (
+                <div className="absolute left-0 top-full z-10 mt-1 w-48 rounded-lg border border-gray-200 bg-white py-2 shadow-lg">
+                  {owners.length === 0 ? (
+                    <p className="px-4 py-2 text-sm text-gray-500">No owners</p>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedOwner(null);
+                          setOwnersDropdownOpen(false);
+                        }}
+                        className="flex w-full cursor-pointer items-center gap-2 px-4 py-2 text-left hover:bg-gray-50"
+                      >
+                        <span className={`h-4 w-4 rounded-full border-2 ${selectedOwner === null ? "border-primary bg-primary" : "border-gray-300"}`} />
+                        <span className="text-sm text-gray-700">All Owners</span>
+                      </button>
+                      {owners.map((owner) => (
+                        <button
+                          key={owner}
+                          type="button"
+                          onClick={() => {
+                            setSelectedOwner(owner);
+                            setOwnersDropdownOpen(false);
+                          }}
+                          className="flex w-full cursor-pointer items-center gap-2 px-4 py-2 text-left hover:bg-gray-50"
+                        >
+                          <span className={`h-4 w-4 rounded-full border-2 ${selectedOwner === owner ? "border-primary bg-primary" : "border-gray-300"}`} />
+                          <span className="text-sm text-gray-700">{owner}</span>
+                        </button>
+                      ))}
+                    </>
+                  )}
+                </div>
+              )}
             </div>
             <button
               type="button"
@@ -667,21 +819,6 @@ export default function BudgetPage() {
         <h2 className="mb-6 text-xl font-bold text-gray-800">
           Budget Categories
         </h2>
-        <div className="mb-10 grid gap-6 sm:grid-cols-2">
-          <div className="rounded-xl bg-white p-6 shadow-sm">
-            <p className="text-sm text-gray-500">Investments</p>
-            <p className="mt-2 text-2xl font-bold text-gray-800">
-              {formatCurrencyRounded(investmentsTotal)}
-            </p>
-          </div>
-          <div className="rounded-xl bg-white p-6 shadow-sm">
-            <p className="text-sm text-gray-500">Future Expense</p>
-            <p className="mt-2 text-2xl font-bold text-gray-800">
-              {formatCurrency(futureExpenseTotal)}
-            </p>
-          </div>
-        </div>
-
         {/* Category Budget Allocation */}
         <div className="mb-10">
           <div className="rounded-xl bg-white p-6 shadow-sm">
@@ -882,6 +1019,9 @@ export default function BudgetPage() {
                           Match
                         </th>
                       )}
+                      {editingSections.includes(section.name) && (
+                        <th className="w-12 px-2 py-3" aria-label="Actions" />
+                      )}
                     </tr>
                   </thead>
                   <tbody>
@@ -1000,9 +1140,51 @@ export default function BudgetPage() {
                               )}
                             </td>
                           )}
+                          {isEditing && (
+                            <td className="px-2 py-3 text-right">
+                              <button
+                                type="button"
+                                onClick={() => openDeleteModal(section.name, i, row)}
+                                className="inline-flex items-center justify-center rounded p-1.5 text-red-500 hover:bg-red-50 hover:text-red-600"
+                                aria-label="Delete row"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <polyline points="3 6 5 6 21 6" />
+                                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                                  <line x1="10" y1="11" x2="10" y2="17" />
+                                  <line x1="14" y1="11" x2="14" y2="17" />
+                                </svg>
+                              </button>
+                            </td>
+                          )}
                         </tr>
                       );
                     })}
+                    {editingSections.includes(section.name) && (
+                      <tr className="border-t border-gray-200">
+                        <td
+                          colSpan={
+                            3 +
+                            (section.hasIrsLimit ? 1 : 0) +
+                            (section.hasMatch ? 1 : 0) +
+                            1
+                          }
+                          className="px-4 py-3"
+                        >
+                          <button
+                            type="button"
+                            onClick={() => setAddItemModalSection(section.name)}
+                            className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary text-white transition-colors hover:bg-primary-hover mx-auto"
+                            aria-label="Add row"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <line x1="12" y1="5" x2="12" y2="19" />
+                              <line x1="5" y1="12" x2="19" y2="12" />
+                            </svg>
+                          </button>
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                   <tfoot>
                     <tr className="border-t border-gray-200 bg-gray-50 font-semibold">
@@ -1018,6 +1200,9 @@ export default function BudgetPage() {
                       )}
                       {section.hasMatch && (
                         <td className="px-4 py-3 text-right text-sm text-gray-800">—</td>
+                      )}
+                      {editingSections.includes(section.name) && (
+                        <td className="w-12 px-2 py-3" />
                       )}
                     </tr>
                   </tfoot>
@@ -1047,6 +1232,67 @@ export default function BudgetPage() {
           );
         })}
       </div>
+
+      {/* Add Budget Item Modal */}
+      {addItemModalSection && (
+        <AddBudgetItemModal
+          isOpen={!!addItemModalSection}
+          onClose={() => setAddItemModalSection(null)}
+          onAdd={(row) => {
+            addCategoryRow(addItemModalSection, row);
+            setAddItemModalSection(null);
+          }}
+          sectionName={addItemModalSection}
+          existingSubcategoryIds={
+            categoryRows.find((s) => s.name === addItemModalSection)?.rows.map((r) => r.subcategoryId) ?? []
+          }
+          hasIrsLimit={categoryRows.find((s) => s.name === addItemModalSection)?.hasIrsLimit}
+          hasMatch={categoryRows.find((s) => s.name === addItemModalSection)?.hasMatch}
+        />
+      )}
+
+      {/* Delete Budget Item Modal */}
+      {deletePending && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={closeDeleteModal}
+            aria-hidden="true"
+          />
+          <div className="relative z-10 w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <h2 className="mb-4 text-xl font-bold text-gray-900">
+              Delete Budget Item?
+            </h2>
+            <p className="mb-2 text-sm text-gray-600">
+              Are you sure you want to delete &quot;{deletePending.row.expense}&quot;?
+            </p>
+            <p className="mb-6 text-sm text-gray-600">
+              This action cannot be undone.
+            </p>
+            {deleteError && (
+              <p className="mb-4 rounded-lg bg-red-50 p-3 text-sm text-red-700">
+                {deleteError}
+              </p>
+            )}
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={closeDeleteModal}
+                className="rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteBudgetItem}
+                className="rounded-lg bg-red-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-red-700 transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Add New Budget Modal */}
       {addBudgetModalOpen && (

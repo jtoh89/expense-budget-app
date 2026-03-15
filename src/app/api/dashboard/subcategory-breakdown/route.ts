@@ -73,10 +73,10 @@ export async function GET(request: NextRequest) {
       for (const a of allocData) {
         if (a.subcategory_id) {
           const val = Number(a.monthly_budget) || 0;
-          budgetMap[a.subcategory_id] = val;
+          budgetMap[a.subcategory_id] = (budgetMap[a.subcategory_id] ?? 0) + val;
           const withoutSub = a.subcategory_id.replace(/^sub_/, "");
-          if (withoutSub !== a.subcategory_id) budgetMap[withoutSub] = val;
-          if (!a.subcategory_id.startsWith("sub_")) budgetMap["sub_" + a.subcategory_id] = val;
+          if (withoutSub !== a.subcategory_id) budgetMap[withoutSub] = (budgetMap[withoutSub] ?? 0) + val;
+          if (!a.subcategory_id.startsWith("sub_")) budgetMap["sub_" + a.subcategory_id] = (budgetMap["sub_" + a.subcategory_id] ?? 0) + val;
         }
       }
     }
