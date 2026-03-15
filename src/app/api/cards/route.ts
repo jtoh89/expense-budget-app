@@ -38,3 +38,59 @@ export async function GET() {
     );
   }
 }
+
+/**
+ * POST /api/cards
+ * Body: { owner, cardName, dateHeader?, descriptionHeader?, debitHeader?, creditHeader?, singleColumn? }
+ */
+export async function POST(request: Request) {
+  if (!supabase) {
+    return NextResponse.json(
+      { error: "Database not configured" },
+      { status: 503 }
+    );
+  }
+
+  try {
+    const body = await request.json();
+    const {
+      owner,
+      cardName,
+      dateHeader,
+      descriptionHeader,
+      debitHeader,
+      creditHeader,
+      singleColumn,
+    } = body;
+
+    if (!owner || !cardName) {
+      return NextResponse.json(
+        { error: "owner and cardName are required" },
+        { status: 400 }
+      );
+    }
+
+    const id = `card_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+
+    const { error } = await supabase.from("cards").insert({
+      id,
+      owner: String(owner).trim(),
+      card_name: String(cardName).trim(),
+      date_header: dateHeader ? String(dateHeader).trim() : "Date",
+      description_header: descriptionHeader ? String(descriptionHeader).trim() : "Description",
+      debit_header: debitHeader ? String(debitHeader).trim() : null,
+      credit_header: creditHeader ? String(creditHeader).trim() : null,
+      single_column: singleColumn === true,
+    });
+
+    if (error) throw error;
+
+    return NextResponse.json({ success: true, id });
+  } catch (error) {
+    console.error("POST /api/cards error:", error);
+    return NextResponse.json(
+      { error: "Failed to create card" },
+      { status: 500 }
+    );
+  }
+}

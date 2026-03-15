@@ -2,32 +2,48 @@
 
 import { useState, useEffect, useCallback } from "react";
 import AddTransactionModal from "@/components/AddTransactionModal";
+import SubCategoryAutocomplete, { type SubCategory } from "@/components/SubCategoryAutocomplete";
 
 type Transaction = {
   id: string;
-  card: string;
+  owner: string;
+  cardName: string;
   date: string;
   description: string;
   debit: string;
   credit: string;
+  subCategoryId: string | null;
   subCategory: string;
   category: string;
 };
 
+type SortBy = "date" | "owner" | "cardName" | "description" | "debit" | "credit" | "subCategory" | "category";
+type SortDir = "asc" | "desc";
+
 export default function TransactionsPage() {
   const [currentPage, setCurrentPage] = useState(1);
+  const [sortBy, setSortBy] = useState<SortBy>("date");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [subCategories, setSubCategories] = useState<SubCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [totalPages, setTotalPages] = useState(1);
+
+  useEffect(() => {
+    fetch("/api/subcategories")
+      .then((r) => r.json())
+      .then((data) => setSubCategories(Array.isArray(data) ? data : []))
+      .catch(() => setSubCategories([]));
+  }, []);
 
   const fetchTransactions = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const res = await fetch(
-        `/api/transactions?page=${currentPage}&limit=10&sort=newest`
+        `/api/transactions?page=${currentPage}&limit=100&sortBy=${sortBy}&sortDir=${sortDir}`
       );
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to fetch");
@@ -39,7 +55,7 @@ export default function TransactionsPage() {
     } finally {
       setLoading(false);
     }
-  }, [currentPage]);
+  }, [currentPage, sortBy, sortDir]);
 
   useEffect(() => {
     fetchTransactions();
@@ -48,6 +64,32 @@ export default function TransactionsPage() {
   const handleAddSuccess = () => {
     fetchTransactions();
   };
+
+  const handleSort = (column: SortBy) => {
+    if (sortBy === column) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortBy(column);
+      setSortDir(column === "date" ? "desc" : "asc");
+    }
+    setCurrentPage(1);
+  };
+
+  const SortHeader = ({ column, children }: { column: SortBy; children: React.ReactNode }) => (
+    <th
+      className="cursor-pointer select-none px-4 py-3 text-left text-sm font-semibold text-gray-700 hover:bg-gray-100 transition-colors"
+      onClick={() => handleSort(column)}
+    >
+      <span className="flex items-center gap-1">
+        {children}
+        {sortBy === column && (
+          <span className="text-primary" aria-hidden>
+            {sortDir === "asc" ? "↑" : "↓"}
+          </span>
+        )}
+      </span>
+    </th>
+  );
 
   const pageNumbers = Array.from(
     { length: Math.min(5, totalPages) },
@@ -63,7 +105,7 @@ export default function TransactionsPage() {
             <option>This Month</option>
           </select>
           <select className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary">
-            <option>All Category</option>
+            <option>All categories</option>
           </select>
           <select className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary">
             <option>All Types</option>
@@ -108,27 +150,14 @@ export default function TransactionsPage() {
               <table className="w-full min-w-[800px]">
                 <thead>
                   <tr className="bg-gray-50">
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                      Card
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                      Date
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                      Description
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                      Debit
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                      Credit
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                      Sub Category
-                    </th>
-                    <th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">
-                      Category
-                    </th>
+                    <SortHeader column="owner">Owner</SortHeader>
+                    <SortHeader column="cardName">Card</SortHeader>
+                    <SortHeader column="date">Date</SortHeader>
+                    <SortHeader column="description">Description</SortHeader>
+                    <SortHeader column="debit">Debit</SortHeader>
+                    <SortHeader column="credit">Credit</SortHeader>
+                    <SortHeader column="subCategory">Sub Category</SortHeader>
+                    <SortHeader column="category">Category</SortHeader>
                   </tr>
                 </thead>
                 <tbody>
@@ -140,7 +169,10 @@ export default function TransactionsPage() {
                       }`}
                     >
                       <td className="px-4 py-3 text-sm text-gray-700">
-                        {row.card}
+                        {row.owner}
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-700">
+                        {row.cardName}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-700">
                         {row.date}
@@ -155,7 +187,13 @@ export default function TransactionsPage() {
                         {row.credit}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-700">
-                        {row.subCategory}
+                        <SubCategoryAutocomplete
+                          transactionId={row.id}
+                          value={row.subCategory}
+                          subCategoryId={row.subCategoryId}
+                          subCategories={subCategories}
+                          onUpdate={fetchTransactions}
+                        />
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-700">
                         {row.category}

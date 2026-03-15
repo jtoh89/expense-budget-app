@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/db";
+import { formatCurrency } from "@/lib/currency";
+
+const SORT_COLUMNS = ["date", "owner", "cardName", "description", "debit", "credit", "subCategory", "category"] as const;
 
 /**
  * GET /api/transactions
- * Query params: page, limit, year, month, categoryId, sort (newest|oldest)
+ * Query params: page, limit, year, categoryId, sortBy, sortDir (asc|desc)
  */
 export async function GET(request: NextRequest) {
   if (!supabase) {
@@ -16,19 +19,37 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const page = Math.max(1, parseInt(searchParams.get("page") || "1"));
-    const limit = Math.min(50, Math.max(1, parseInt(searchParams.get("limit") || "10")));
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get("limit") || "10")));
     const offset = (page - 1) * limit;
-    const sort = searchParams.get("sort") || "newest";
+    const sortBy = searchParams.get("sortBy") || "date";
+    const sortDir = searchParams.get("sortDir") || "desc";
+    const asc = sortDir === "asc";
+
+    const validSortBy = SORT_COLUMNS.includes(sortBy as (typeof SORT_COLUMNS)[number]) ? sortBy : "date";
 
     let query = supabase
       .from("transactions")
       .select(
-        "id, card_id, date, description, debit, credit, cards(card_name, owner), subcategories(name, categories(name))",
+        "id, card_id, date, description, debit, credit, sub_category_id, cards(card_name, owner), subcategories(name, categories(name))",
         { count: "exact" }
       )
-      .order("date", { ascending: sort === "oldest" })
-      .order("description", { ascending: true })
       .range(offset, offset + limit - 1);
+
+    if (validSortBy === "date") {
+      query = query.order("date", { ascending: asc }).order("description", { ascending: true });
+    } else if (validSortBy === "description") {
+      query = query.order("description", { ascending: asc }).order("date", { ascending: false });
+    } else if (validSortBy === "debit") {
+      query = query.order("debit", { ascending: asc }).order("date", { ascending: false });
+    } else if (validSortBy === "credit") {
+      query = query.order("credit", { ascending: asc }).order("date", { ascending: false });
+    } else if (validSortBy === "owner") {
+      query = query.order("owner", { ascending: asc, foreignTable: "cards" }).order("date", { ascending: false });
+    } else if (validSortBy === "cardName") {
+      query = query.order("card_name", { ascending: asc, foreignTable: "cards" }).order("date", { ascending: false });
+    } else if (validSortBy === "subCategory" || validSortBy === "category") {
+      query = query.order("name", { ascending: asc, foreignTable: "subcategories" }).order("date", { ascending: false });
+    }
 
     const year = searchParams.get("year");
     const categoryId = searchParams.get("categoryId");
@@ -48,17 +69,18 @@ export async function GET(request: NextRequest) {
       return {
         id: r.id,
         cardId: r.card_id,
-        card: card && "owner" in card && "card_name" in card ? `${card.owner} - ${card.card_name}` : "—",
+        owner: card && "owner" in card ? card.owner : "—",
+        cardName: card && "card_name" in card ? card.card_name : "—",
         date: r.date
-          ? new Date(r.date).toLocaleDateString("en-GB", {
-              day: "numeric",
-              month: "short",
-              year: "numeric",
-            })
+          ? (() => {
+              const d = new Date(r.date);
+              return `${d.toLocaleString("en-US", { month: "short" })} ${d.getDate()} ${d.getFullYear()}`;
+            })()
           : "—",
         description: r.description || "—",
-        debit: r.debit != null && Number(r.debit) > 0 ? `$${Number(r.debit)}` : "",
-        credit: r.credit != null && Number(r.credit) > 0 ? `$${Number(r.credit)}` : "",
+        debit: r.debit != null && Number(r.debit) > 0 ? formatCurrency(Number(r.debit)) : "",
+        credit: r.credit != null && Number(r.credit) > 0 ? formatCurrency(Number(r.credit)) : "",
+        subCategoryId: r.sub_category_id ?? null,
         subCategory: sub && "name" in sub ? sub.name : "—",
         category:
           sub && "categories" in sub && sub.categories

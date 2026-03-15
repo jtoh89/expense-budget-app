@@ -1,20 +1,7 @@
 "use client";
 
 import { useState } from "react";
-
-function formatCurrency(n: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(n);
-}
-
-function parseCurrencyInput(value: string): number {
-  const digits = value.replace(/\D/g, "");
-  return digits === "" ? 0 : parseInt(digits, 10);
-}
+import { formatCurrency, parseCurrencyInput } from "@/lib/currency";
 
 type AddNewInvestmentsModalProps = {
   isOpen: boolean;

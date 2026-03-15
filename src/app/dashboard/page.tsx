@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { formatCurrency } from "@/lib/currency";
 import {
   Chart as ChartJS,
   ArcElement,
@@ -69,15 +70,6 @@ const MONTHLY_SUMMARIES = [
     leftoverBudget: -50,
   },
 ];
-
-function formatCurrency(n: number) {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 0,
-  }).format(n);
-}
 
 export default function DashboardPage() {
   const [selectedYear, setSelectedYear] = useState("2026");

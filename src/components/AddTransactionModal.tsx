@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { formatCurrency, parseCurrencyInput } from "@/lib/currency";
 
 type Card = { id: string; name: string; owner: string; label: string };
 type SubCategory = { id: string; name: string; categoryId: string; categoryName: string };
@@ -18,11 +19,13 @@ export default function AddTransactionModal({
 }: AddTransactionModalProps) {
   const [cards, setCards] = useState<Card[]>([]);
   const [subCategories, setSubCategories] = useState<SubCategory[]>([]);
+  const [amount, setAmount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (isOpen) {
+      setAmount(0);
       Promise.all([
         fetch("/api/cards").then((r) => r.json()),
         fetch("/api/subcategories").then((r) => r.json()),
@@ -51,11 +54,7 @@ export default function AddTransactionModal({
     const subCategoryId = (
       form.elements.namedItem("subCategory") as HTMLSelectElement
     ).value;
-    const amount = parseFloat(
-      (form.elements.namedItem("amount") as HTMLInputElement).value
-    );
-
-    if (!cardId || !date || !description || isNaN(amount)) return;
+    if (!cardId || !date || !description || amount === 0) return;
 
     setLoading(true);
     setError(null);
@@ -179,15 +178,25 @@ export default function AddTransactionModal({
           <p className="text-sm text-gray-500">
             Category will be autofilled here
           </p>
-          <input
-            id="amount"
-            name="amount"
-            type="number"
-            step="0.01"
-            placeholder="Amount (positive=debit, negative=credit)"
-            required
-            className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-800 placeholder-gray-400 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-          />
+          <div>
+            <label
+              htmlFor="amount"
+              className="mb-1.5 block text-sm font-medium text-gray-700"
+            >
+              Amount
+            </label>
+            <input
+              id="amount"
+              name="amount"
+              type="text"
+              inputMode="decimal"
+              value={amount === 0 ? "" : (amount > 0 ? formatCurrency(amount) : `-${formatCurrency(Math.abs(amount))}`)}
+              onChange={(e) => setAmount(parseCurrencyInput(e.target.value))}
+              placeholder="$0.00 (positive=debit, negative=credit)"
+              required
+              className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-800 placeholder-gray-400 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+          </div>
           {error && (
             <p className="text-sm text-red-600">{error}</p>
           )}
