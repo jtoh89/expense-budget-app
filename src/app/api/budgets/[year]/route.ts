@@ -59,6 +59,57 @@ export async function GET(
 }
 
 /**
+ * DELETE /api/budgets/[year]
+ * Query: ?owner=Jon (optional - default 'default')
+ * Deletes the budget and its allocations.
+ */
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ year: string }> }
+) {
+  if (!supabase) {
+    return NextResponse.json(
+      { error: "Database not configured" },
+      { status: 503 }
+    );
+  }
+
+  try {
+    const { year } = await params;
+    const yearNum = parseInt(year, 10);
+    if (isNaN(yearNum)) {
+      return NextResponse.json({ error: "Invalid year" }, { status: 400 });
+    }
+
+    const { searchParams } = new URL(request.url);
+    const owner = searchParams.get("owner") || "default";
+    const id = `${owner}-${yearNum}`;
+
+    const { error: allocError } = await supabase
+      .from("budget_allocations")
+      .delete()
+      .eq("budget_id", id);
+
+    if (allocError) throw allocError;
+
+    const { error: budgetError } = await supabase
+      .from("budgets")
+      .delete()
+      .eq("id", id);
+
+    if (budgetError) throw budgetError;
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("DELETE /api/budgets/[year] error:", error);
+    return NextResponse.json(
+      { error: "Failed to delete budget" },
+      { status: 500 }
+    );
+  }
+}
+
+/**
  * PATCH /api/budgets/[year]
  * Body: { owner?, annualIncome?, otherIncome?, estimatedTaxes? }
  */

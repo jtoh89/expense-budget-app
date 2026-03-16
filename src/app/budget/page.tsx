@@ -122,7 +122,12 @@ export default function BudgetPage() {
   const [sectionSnapshots, setSectionSnapshots] = useState<Record<string, CategoryRow[]>>({});
   const [addBudgetModalOpen, setAddBudgetModalOpen] = useState(false);
   const [newBudgetYear, setNewBudgetYear] = useState("2027");
+  const [newBudgetOwner, setNewBudgetOwner] = useState("");
   const [copyFromYear, setCopyFromYear] = useState("2026");
+  const [copyFromOwner, setCopyFromOwner] = useState("");
+  const [createBudgetError, setCreateBudgetError] = useState<string | null>(null);
+  const [createBudgetLoading, setCreateBudgetLoading] = useState(false);
+  const [createModalOwners, setCreateModalOwners] = useState<string[]>([]);
   const [editingIncome, setEditingIncome] = useState(false);
   const [incomeSnapshot, setIncomeSnapshot] = useState<{
     annualIncome: number;
@@ -150,6 +155,12 @@ export default function BudgetPage() {
   } | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [addItemModalSection, setAddItemModalSection] = useState<string | null>(null);
+  const [deleteBudgetPending, setDeleteBudgetPending] = useState(false);
+  const [deleteBudgetError, setDeleteBudgetError] = useState<string | null>(null);
+  const [deleteModalOwner, setDeleteModalOwner] = useState("");
+  const [deleteModalYear, setDeleteModalYear] = useState("");
+  const [deleteModalOwners, setDeleteModalOwners] = useState<string[]>([]);
+  const [deleteModalYears, setDeleteModalYears] = useState<number[]>([]);
 
   useEffect(() => {
     fetch("/api/budgets?owners=true")
@@ -165,6 +176,57 @@ export default function BudgetPage() {
       })
       .catch(() => setOwners([]));
   }, []);
+
+  useEffect(() => {
+    if (addBudgetModalOpen) {
+      setCreateBudgetError(null);
+      setCopyFromYear(budgetYear);
+      setNewBudgetYear(String(parseInt(budgetYear, 10) + 1));
+      const currentOwner = selectedOwner ?? owners[0] ?? "default";
+      Promise.all([
+        fetch("/api/budgets?owners=true").then((r) => r.json()),
+        fetch("/api/cards").then((r) => r.json()),
+      ]).then(([budgetOwners, cards]) => {
+        const fromBudgets = Array.isArray(budgetOwners) ? budgetOwners.filter((o) => typeof o === "string") : [];
+        const fromCards = Array.isArray(cards) ? [...new Set(cards.map((c: { owner?: string }) => c.owner).filter(Boolean))] as string[] : [];
+        const list = [...new Set([...fromBudgets, ...fromCards])].sort();
+        setCreateModalOwners(list);
+        setNewBudgetOwner(list.includes(currentOwner) ? currentOwner : list[0] ?? "");
+        setCopyFromOwner(list.includes(currentOwner) ? currentOwner : list[0] ?? "");
+      });
+    }
+  }, [addBudgetModalOpen, budgetYear, selectedOwner, owners]);
+
+  useEffect(() => {
+    if (deleteBudgetPending) {
+      setDeleteBudgetError(null);
+      setDeleteModalOwner("");
+      setDeleteModalYear("");
+      setDeleteModalOwners([]);
+      setDeleteModalYears([]);
+      fetch("/api/budgets?owners=true")
+        .then((r) => r.json())
+        .then((data) => {
+          const list = Array.isArray(data) ? data.filter((o): o is string => typeof o === "string") : [];
+          setDeleteModalOwners(list);
+        });
+    }
+  }, [deleteBudgetPending]);
+
+  useEffect(() => {
+    if (deleteBudgetPending && deleteModalOwner) {
+      const ownerParam = `?owner=${encodeURIComponent(deleteModalOwner)}`;
+      fetch(`/api/budgets${ownerParam}`)
+        .then((r) => r.json())
+        .then((years: number[]) => {
+          setDeleteModalYears(Array.isArray(years) ? years : []);
+          setDeleteModalYear("");
+        });
+    } else {
+      setDeleteModalYears([]);
+      setDeleteModalYear("");
+    }
+  }, [deleteBudgetPending, deleteModalOwner]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -675,6 +737,16 @@ export default function BudgetPage() {
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <line x1="12" y1="5" x2="12" y2="19" />
                 <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              onClick={() => setDeleteBudgetPending(true)}
+              className="flex h-[42px] w-[42px] flex-shrink-0 items-center justify-center rounded-lg bg-red-600 text-white transition-colors hover:bg-red-700"
+              aria-label="Delete budget"
+            >
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
               </svg>
             </button>
           </div>
@@ -1282,6 +1354,102 @@ export default function BudgetPage() {
         </div>
       )}
 
+      {/* Delete Budget Confirmation Modal */}
+      {deleteBudgetPending && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={() => { setDeleteBudgetPending(false); setDeleteBudgetError(null); }}
+            aria-hidden="true"
+          />
+          <div className="relative z-10 w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <h2 className="mb-4 text-xl font-bold text-gray-900">
+              Delete Budget
+            </h2>
+            <p className="mb-4 text-sm text-gray-600">
+              Select the budget to delete. This will remove all allocations and cannot be undone.
+            </p>
+            <div className="mb-4 space-y-4">
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                  Owner
+                </label>
+                <select
+                  value={deleteModalOwner}
+                  onChange={(e) => setDeleteModalOwner(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-800 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                >
+                  <option value="">Select owner</option>
+                  {deleteModalOwners.map((o) => (
+                    <option key={o} value={o}>{o}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                  Year
+                </label>
+                <select
+                  value={deleteModalYear}
+                  onChange={(e) => setDeleteModalYear(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-800 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                >
+                  <option value="">Select year</option>
+                  {deleteModalYears.map((y) => (
+                    <option key={y} value={String(y)}>{y}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            {deleteBudgetError && (
+              <p className="mb-4 text-sm text-red-600">{deleteBudgetError}</p>
+            )}
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => { setDeleteBudgetPending(false); setDeleteBudgetError(null); }}
+                className="rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!deleteModalOwner || !deleteModalYear}
+                onClick={async () => {
+                  if (!deleteModalOwner || !deleteModalYear) return;
+                  setDeleteBudgetError(null);
+                  try {
+                    const res = await fetch(
+                      `/api/budgets/${deleteModalYear}?owner=${encodeURIComponent(deleteModalOwner)}`,
+                      { method: "DELETE" }
+                    );
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error || "Failed to delete");
+                    setDeleteBudgetPending(false);
+                    if (deleteModalOwner === budgetOwner) {
+                      const ownerParam = budgetOwner !== "default" ? `?owner=${encodeURIComponent(budgetOwner)}` : "";
+                      const yearsRes = await fetch(`/api/budgets${ownerParam}`);
+                      const years: number[] = await yearsRes.json();
+                      if (Array.isArray(years) && years.length > 0) {
+                        setBudgetYears(years);
+                        setBudgetYear(String(years[0]));
+                      } else {
+                        setBudgetYears([]);
+                      }
+                    }
+                  } catch (err) {
+                    setDeleteBudgetError(err instanceof Error ? err.message : "Failed to delete budget");
+                  }
+                }}
+                className="rounded-lg bg-red-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Add New Budget Modal */}
       {addBudgetModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4">
@@ -1297,6 +1465,24 @@ export default function BudgetPage() {
             <div className="space-y-4">
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                  Owner
+                </label>
+                <select
+                  value={newBudgetOwner}
+                  onChange={(e) => setNewBudgetOwner(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-800 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                >
+                  {createModalOwners.length === 0 ? (
+                    <option value="">No owners – add a card first</option>
+                  ) : (
+                    createModalOwners.map((o) => (
+                      <option key={o} value={o}>{o}</option>
+                    ))
+                  )}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">
                   Budget Year
                 </label>
                 <select
@@ -1306,6 +1492,20 @@ export default function BudgetPage() {
                 >
                   {[2025, 2026, 2027, 2028, 2029, 2030].map((y) => (
                     <option key={y} value={String(y)}>{y}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                  Copy from Owner
+                </label>
+                <select
+                  value={copyFromOwner}
+                  onChange={(e) => setCopyFromOwner(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-800 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                >
+                  {createModalOwners.map((o) => (
+                    <option key={o} value={o}>{o}</option>
                   ))}
                 </select>
               </div>
@@ -1323,23 +1523,51 @@ export default function BudgetPage() {
                   ))}
                 </select>
               </div>
+              {createBudgetError && (
+                <p className="text-sm text-red-600">{createBudgetError}</p>
+              )}
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"
                   onClick={() => setAddBudgetModalOpen(false)}
-                  className="rounded-lg border border-primary bg-white px-5 py-2.5 text-sm font-medium text-primary hover:bg-primary/5 transition-colors"
+                  disabled={createBudgetLoading}
+                  className="rounded-lg border border-primary bg-white px-5 py-2.5 text-sm font-medium text-primary hover:bg-primary/5 transition-colors disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
-                  onClick={() => {
-                    setBudgetYear(newBudgetYear);
-                    setAddBudgetModalOpen(false);
+                  disabled={!newBudgetOwner || createBudgetLoading || createModalOwners.length === 0}
+                  onClick={async () => {
+                    setCreateBudgetError(null);
+                    setCreateBudgetLoading(true);
+                    try {
+                      const res = await fetch("/api/budgets", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          owner: newBudgetOwner,
+                          year: parseInt(newBudgetYear, 10),
+                          copyFromOwner: copyFromOwner || undefined,
+                          copyFromYear: copyFromYear ? parseInt(copyFromYear, 10) : undefined,
+                        }),
+                      });
+                      const data = await res.json();
+                      if (!res.ok) {
+                        throw new Error(data.error || "Failed to create budget");
+                      }
+                      setSelectedOwner(newBudgetOwner);
+                      setBudgetYear(newBudgetYear);
+                      setAddBudgetModalOpen(false);
+                    } catch (err) {
+                      setCreateBudgetError(err instanceof Error ? err.message : "Failed to create budget");
+                    } finally {
+                      setCreateBudgetLoading(false);
+                    }
                   }}
-                  className="rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-white hover:bg-primary-hover transition-colors"
+                  className="rounded-lg bg-primary px-5 py-2.5 text-sm font-medium text-white hover:bg-primary-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  Create
+                  {createBudgetLoading ? "Creating..." : "Create"}
                 </button>
               </div>
             </div>
