@@ -128,6 +128,7 @@ export default function BudgetPage() {
   const [createBudgetError, setCreateBudgetError] = useState<string | null>(null);
   const [createBudgetLoading, setCreateBudgetLoading] = useState(false);
   const [createModalOwners, setCreateModalOwners] = useState<string[]>([]);
+  const [copyFromYears, setCopyFromYears] = useState<number[]>([]);
   const [editingIncome, setEditingIncome] = useState(false);
   const [incomeSnapshot, setIncomeSnapshot] = useState<{
     annualIncome: number;
@@ -180,9 +181,11 @@ export default function BudgetPage() {
   useEffect(() => {
     if (addBudgetModalOpen) {
       setCreateBudgetError(null);
-      setCopyFromYear(budgetYear);
+      setCopyFromOwner("");
+      setCopyFromYear("");
+      setCopyFromYears([]);
       setNewBudgetYear(String(parseInt(budgetYear, 10) + 1));
-      const currentOwner = selectedOwner ?? owners[0] ?? "default";
+      const currentOwner = selectedOwner ?? owners[0] ?? "";
       Promise.all([
         fetch("/api/budgets?owners=true").then((r) => r.json()),
         fetch("/api/cards").then((r) => r.json()),
@@ -192,10 +195,24 @@ export default function BudgetPage() {
         const list = [...new Set([...fromBudgets, ...fromCards])].sort();
         setCreateModalOwners(list);
         setNewBudgetOwner(list.includes(currentOwner) ? currentOwner : list[0] ?? "");
-        setCopyFromOwner(list.includes(currentOwner) ? currentOwner : list[0] ?? "");
       });
     }
   }, [addBudgetModalOpen, budgetYear, selectedOwner, owners]);
+
+  useEffect(() => {
+    if (addBudgetModalOpen && copyFromOwner) {
+      const ownerParam = `?owner=${encodeURIComponent(copyFromOwner)}`;
+      fetch(`/api/budgets${ownerParam}`)
+        .then((r) => r.json())
+        .then((years: number[]) => {
+          setCopyFromYears(Array.isArray(years) ? years : []);
+          setCopyFromYear("");
+        });
+    } else {
+      setCopyFromYears([]);
+      setCopyFromYear("");
+    }
+  }, [addBudgetModalOpen, copyFromOwner]);
 
   useEffect(() => {
     if (deleteBudgetPending) {
@@ -248,11 +265,12 @@ export default function BudgetPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const budgetOwner = selectedOwner ?? (owners[0] ?? "default");
+  const budgetOwner = selectedOwner ?? owners[0] ?? "";
+  const fmt = (n: number) => (budgetOwner ? formatCurrencyRounded(n) : "—");
 
   useEffect(() => {
     let cancelled = false;
-    const ownerParam = budgetOwner !== "default" ? `?owner=${encodeURIComponent(budgetOwner)}` : "";
+    const ownerParam = budgetOwner ? `?owner=${encodeURIComponent(budgetOwner)}` : "";
     fetch(`/api/budgets${ownerParam}`)
       .then((res) => res.json())
       .then((years: number[]) => {
@@ -275,7 +293,7 @@ export default function BudgetPage() {
   useEffect(() => {
     let cancelled = false;
     setIncomeLoading(true);
-    const ownerParam = budgetOwner !== "default" ? `?owner=${encodeURIComponent(budgetOwner)}` : "";
+    const ownerParam = budgetOwner ? `?owner=${encodeURIComponent(budgetOwner)}` : "";
     fetch(`/api/budgets/${budgetYear}${ownerParam}`)
       .then((res) => res.json())
       .then((data) => {
@@ -298,7 +316,7 @@ export default function BudgetPage() {
   useEffect(() => {
     let cancelled = false;
     setAllocationsLoading(true);
-    const ownerParam = budgetOwner !== "default" ? `&owner=${encodeURIComponent(budgetOwner)}` : "";
+    const ownerParam = budgetOwner ? `&owner=${encodeURIComponent(budgetOwner)}` : "";
     fetch(`/api/budget-allocations?year=${budgetYear}${ownerParam}`)
       .then((res) => res.json())
       .then((allocations: Record<string, { monthlyBudget: number; annualBudget: number | null; irsLimit: number | null; employerMatch: number | null }>) => {
@@ -699,7 +717,7 @@ export default function BudgetPage() {
                 className="flex min-w-[140px] items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-left text-gray-800 shadow-sm hover:bg-gray-50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
               >
                 <span className="truncate">
-                  {budgetOwner}
+                  {budgetOwner || "—"}
                 </span>
                 <svg className={`h-4 w-4 shrink-0 text-gray-500 transition-transform ${ownersDropdownOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -784,7 +802,7 @@ export default function BudgetPage() {
                 />
               ) : (
                 <p className="py-2.5 text-base font-medium text-gray-800">
-                  {formatCurrencyRounded(annualIncome)}
+                  {fmt(annualIncome)}
                 </p>
               )}
             </div>
@@ -805,7 +823,7 @@ export default function BudgetPage() {
                 />
               ) : (
                 <p className="py-2.5 text-base font-medium text-gray-800">
-                  {formatCurrencyRounded(otherIncome)}
+                  {fmt(otherIncome)}
                 </p>
               )}
             </div>
@@ -834,7 +852,7 @@ export default function BudgetPage() {
                 />
               ) : (
                 <p className="py-2.5 text-base font-medium text-gray-800">
-                  {formatCurrencyRounded(estimatedTaxes)}
+                  {fmt(estimatedTaxes)}
                 </p>
               )}
             </div>
@@ -843,7 +861,7 @@ export default function BudgetPage() {
               Adjusted Gross Income
             </label>
             <p className="py-2.5 text-base font-medium text-gray-800">
-              {formatCurrencyRounded(adjustedGrossIncome)}
+              {fmt(adjustedGrossIncome)}
             </p>
           </div>
           <div>
@@ -851,7 +869,7 @@ export default function BudgetPage() {
               Take Home Pay
             </label>
             <p className="py-2.5 text-base font-medium text-gray-800">
-              {formatCurrencyRounded(takeHomePay)}
+              {fmt(takeHomePay)}
             </p>
           </div>
           {editingIncome && (
@@ -948,7 +966,7 @@ export default function BudgetPage() {
                     />
                     <span className="text-sm text-gray-700 truncate">{c.name}</span>
                     <span className="text-sm text-gray-500 ml-auto shrink-0">
-                      {formatCurrencyRounded(c.value)}
+                      {fmt(c.value)}
                     </span>
                   </div>
                 ))}
@@ -1026,7 +1044,7 @@ export default function BudgetPage() {
                     />
                     <span className="text-sm text-gray-700 truncate">{item.row.expense}</span>
                     <span className="text-sm text-gray-500 ml-auto shrink-0">
-                      {formatCurrencyRounded(item.annual)}
+                      {fmt(item.annual)}
                     </span>
                   </div>
                 ))}
@@ -1111,7 +1129,7 @@ export default function BudgetPage() {
                           <td className="px-4 py-3 text-right tabular-nums">
                             {isPretax ? (
                               <span className="block text-sm text-gray-800">
-                                {formatCurrencyRounded(myMonthly)}
+                                {fmt(myMonthly)}
                               </span>
                             ) : isEditing ? (
                               <input
@@ -1129,14 +1147,14 @@ export default function BudgetPage() {
                               />
                             ) : (
                               <span className="block text-sm text-gray-800">
-                                {formatCurrencyRounded(row.monthly)}
+                                {fmt(row.monthly)}
                               </span>
                             )}
                           </td>
                           <td className="px-4 py-3 text-right tabular-nums">
                             {isPretax ? (
                               <span className="block text-sm text-gray-800">
-                                {formatCurrencyRounded(myAnnual)}
+                                {fmt(myAnnual)}
                               </span>
                             ) : isEditing ? (
                               <input
@@ -1154,7 +1172,7 @@ export default function BudgetPage() {
                               />
                             ) : (
                               <span className="block text-sm text-gray-800">
-                                {formatCurrencyRounded(row.annual)}
+                                {fmt(row.annual)}
                               </span>
                             )}
                           </td>
@@ -1176,7 +1194,7 @@ export default function BudgetPage() {
                                 />
                               ) : (
                                 <span className="block text-sm text-gray-800">
-                                  {row.irsLimit != null ? formatCurrencyRounded(row.irsLimit) : "—"}
+                                  {budgetOwner ? (row.irsLimit != null ? formatCurrencyRounded(row.irsLimit) : "—") : "—"}
                                 </span>
                               )}
                             </td>
@@ -1195,7 +1213,7 @@ export default function BudgetPage() {
                                 />
                               ) : (
                                 <span className="block text-sm text-gray-800">
-                                  {row.match ?? "—"}
+                                  {budgetOwner ? (row.match ?? "—") : "—"}
                                 </span>
                               )}
                             </td>
@@ -1250,10 +1268,10 @@ export default function BudgetPage() {
                     <tr className="border-t border-gray-200 bg-gray-50 font-semibold">
                       <td className="px-4 py-3 text-sm text-gray-800">TOTAL:</td>
                       <td className="px-4 py-3 text-right text-sm tabular-nums text-gray-800">
-                        {formatCurrencyRounded(totals.monthly)}
+                        {fmt(totals.monthly)}
                       </td>
                       <td className="px-4 py-3 text-right text-sm tabular-nums text-gray-800">
-                        {formatCurrencyRounded(totals.annual)}
+                        {fmt(totals.annual)}
                       </td>
                       {section.hasIrsLimit && (
                         <td className="px-4 py-3 text-right text-sm text-gray-800">—</td>
@@ -1427,7 +1445,7 @@ export default function BudgetPage() {
                     if (!res.ok) throw new Error(data.error || "Failed to delete");
                     setDeleteBudgetPending(false);
                     if (deleteModalOwner === budgetOwner) {
-                      const ownerParam = budgetOwner !== "default" ? `?owner=${encodeURIComponent(budgetOwner)}` : "";
+                      const ownerParam = budgetOwner ? `?owner=${encodeURIComponent(budgetOwner)}` : "";
                       const yearsRes = await fetch(`/api/budgets${ownerParam}`);
                       const years: number[] = await yearsRes.json();
                       if (Array.isArray(years) && years.length > 0) {
@@ -1497,32 +1515,36 @@ export default function BudgetPage() {
               </div>
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-gray-700">
-                  Copy from Owner
+                  Copy from Owner <span className="text-gray-400 font-normal">(optional)</span>
                 </label>
                 <select
                   value={copyFromOwner}
                   onChange={(e) => setCopyFromOwner(e.target.value)}
                   className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-800 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
                 >
+                  <option value="">Don&apos;t copy</option>
                   {createModalOwners.map((o) => (
                     <option key={o} value={o}>{o}</option>
                   ))}
                 </select>
               </div>
-              <div>
-                <label className="mb-1.5 block text-sm font-medium text-gray-700">
-                  Copy from Year
-                </label>
-                <select
-                  value={copyFromYear}
-                  onChange={(e) => setCopyFromYear(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-800 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-                >
-                  {[2025, 2026, 2027, 2028, 2029, 2030].map((y) => (
-                    <option key={y} value={String(y)}>{y}</option>
-                  ))}
-                </select>
-              </div>
+              {copyFromOwner && (
+                <div>
+                  <label className="mb-1.5 block text-sm font-medium text-gray-700">
+                    Copy from Year <span className="text-red-500">(required)</span>
+                  </label>
+                  <select
+                    value={copyFromYear}
+                    onChange={(e) => setCopyFromYear(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-gray-800 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+                  >
+                    <option value="">Select year</option>
+                    {copyFromYears.map((y) => (
+                      <option key={y} value={String(y)}>{y}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               {createBudgetError && (
                 <p className="text-sm text-red-600">{createBudgetError}</p>
               )}
@@ -1537,20 +1559,28 @@ export default function BudgetPage() {
                 </button>
                 <button
                   type="button"
-                  disabled={!newBudgetOwner || createBudgetLoading || createModalOwners.length === 0}
+                  disabled={
+                    !newBudgetOwner ||
+                    createBudgetLoading ||
+                    createModalOwners.length === 0 ||
+                    (!!copyFromOwner && !copyFromYear)
+                  }
                   onClick={async () => {
                     setCreateBudgetError(null);
                     setCreateBudgetLoading(true);
                     try {
+                      const body: { owner: string; year: number; copyFromOwner?: string; copyFromYear?: number } = {
+                        owner: newBudgetOwner,
+                        year: parseInt(newBudgetYear, 10),
+                      };
+                      if (copyFromOwner && copyFromYear) {
+                        body.copyFromOwner = copyFromOwner;
+                        body.copyFromYear = parseInt(copyFromYear, 10);
+                      }
                       const res = await fetch("/api/budgets", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          owner: newBudgetOwner,
-                          year: parseInt(newBudgetYear, 10),
-                          copyFromOwner: copyFromOwner || undefined,
-                          copyFromYear: copyFromYear ? parseInt(copyFromYear, 10) : undefined,
-                        }),
+                        body: JSON.stringify(body),
                       });
                       const data = await res.json();
                       if (!res.ok) {
