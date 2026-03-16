@@ -5,6 +5,7 @@ import { supabase } from "@/lib/db";
  * GET /api/budgets
  * Returns available budget years from the budgets table.
  * Query: ?owner=yin (optional - filter by owner)
+ * Query: ?owners=true (optional - return distinct owners instead of years)
  */
 export async function GET(request: NextRequest) {
   if (!supabase) {
@@ -17,6 +18,19 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const owner = searchParams.get("owner");
+    const listOwners = searchParams.get("owners") === "true";
+
+    if (listOwners) {
+      const { data, error } = await supabase
+        .from("budgets")
+        .select("owner")
+        .order("owner");
+
+      if (error) throw error;
+
+      const owners = [...new Set((data ?? []).map((r) => r.owner).filter(Boolean))].sort();
+      return NextResponse.json(owners);
+    }
 
     let query = supabase
       .from("budgets")

@@ -2,6 +2,41 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/db";
 
 /**
+ * DELETE /api/transactions/[id]
+ * Deletes a single transaction by id
+ */
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  if (!supabase) {
+    return NextResponse.json(
+      { error: "Database not configured" },
+      { status: 503 }
+    );
+  }
+
+  try {
+    const { id } = await params;
+
+    const { error } = await supabase
+      .from("transactions")
+      .delete()
+      .eq("id", id);
+
+    if (error) throw error;
+
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error("DELETE /api/transactions/[id] error:", error);
+    return NextResponse.json(
+      { error: "Failed to delete transaction" },
+      { status: 500 }
+    );
+  }
+}
+
+/**
  * PATCH /api/transactions/[id]
  * Body: { subCategoryId? }
  */

@@ -139,7 +139,7 @@ export default function BudgetPage() {
   const [subChartDropdownOpen, setSubChartDropdownOpen] = useState(false);
   const categoryChartDropdownRef = useRef<HTMLDivElement>(null);
   const subChartDropdownRef = useRef<HTMLDivElement>(null);
-  const [selectedOwner, setSelectedOwner] = useState<string | null>("Jon");
+  const [selectedOwner, setSelectedOwner] = useState<string | null>(null);
   const [owners, setOwners] = useState<string[]>([]);
   const [ownersDropdownOpen, setOwnersDropdownOpen] = useState(false);
   const ownersDropdownRef = useRef<HTMLDivElement>(null);
@@ -152,15 +152,16 @@ export default function BudgetPage() {
   const [addItemModalSection, setAddItemModalSection] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/cards")
+    fetch("/api/budgets?owners=true")
       .then((r) => r.json())
       .then((data) => {
-        const cards = Array.isArray(data) ? data : [];
-        const ownerSet = new Set<string>();
-        for (const c of cards) {
-          if (c.owner) ownerSet.add(c.owner);
+        if (Array.isArray(data)) {
+          const list = data.filter((o): o is string => typeof o === "string");
+          setOwners(list);
+          setSelectedOwner((prev) => (prev && list.includes(prev) ? prev : list[0] ?? null));
+        } else {
+          setOwners([]);
         }
-        setOwners(Array.from(ownerSet).sort());
       })
       .catch(() => setOwners([]));
   }, []);
@@ -185,7 +186,7 @@ export default function BudgetPage() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const budgetOwner = selectedOwner ?? "Jon";
+  const budgetOwner = selectedOwner ?? (owners[0] ?? "default");
 
   useEffect(() => {
     let cancelled = false;
@@ -628,7 +629,7 @@ export default function BudgetPage() {
             </div>
             <div className="relative" ref={ownersDropdownRef}>
               <label className="mb-2 block text-sm font-medium text-gray-700">
-                Owners
+                Budget
               </label>
               <button
                 type="button"
@@ -636,7 +637,7 @@ export default function BudgetPage() {
                 className="flex min-w-[140px] items-center gap-2 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-left text-gray-800 shadow-sm hover:bg-gray-50 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
               >
                 <span className="truncate">
-                  {selectedOwner ?? "All Owners"}
+                  {budgetOwner}
                 </span>
                 <svg className={`h-4 w-4 shrink-0 text-gray-500 transition-transform ${ownersDropdownOpen ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -645,21 +646,9 @@ export default function BudgetPage() {
               {ownersDropdownOpen && (
                 <div className="absolute left-0 top-full z-10 mt-1 w-48 rounded-lg border border-gray-200 bg-white py-2 shadow-lg">
                   {owners.length === 0 ? (
-                    <p className="px-4 py-2 text-sm text-gray-500">No owners</p>
+                    <p className="px-4 py-2 text-sm text-gray-500">No budgets</p>
                   ) : (
-                    <>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedOwner(null);
-                          setOwnersDropdownOpen(false);
-                        }}
-                        className="flex w-full cursor-pointer items-center gap-2 px-4 py-2 text-left hover:bg-gray-50"
-                      >
-                        <span className={`h-4 w-4 rounded-full border-2 ${selectedOwner === null ? "border-primary bg-primary" : "border-gray-300"}`} />
-                        <span className="text-sm text-gray-700">All Owners</span>
-                      </button>
-                      {owners.map((owner) => (
+                    owners.map((owner) => (
                         <button
                           key={owner}
                           type="button"
@@ -669,11 +658,10 @@ export default function BudgetPage() {
                           }}
                           className="flex w-full cursor-pointer items-center gap-2 px-4 py-2 text-left hover:bg-gray-50"
                         >
-                          <span className={`h-4 w-4 rounded-full border-2 ${selectedOwner === owner ? "border-primary bg-primary" : "border-gray-300"}`} />
-                          <span className="text-sm text-gray-700">{owner}</span>
+                        <span className={`h-4 w-4 rounded-full border-2 ${selectedOwner === owner ? "border-primary bg-primary" : "border-gray-300"}`} />
+                        <span className="text-sm text-gray-700">{owner}</span>
                         </button>
-                      ))}
-                    </>
+                      ))
                   )}
                 </div>
               )}

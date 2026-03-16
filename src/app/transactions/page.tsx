@@ -37,6 +37,8 @@ export default function TransactionsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [totalPages, setTotalPages] = useState(1);
+  const [deletePending, setDeletePending] = useState<Transaction | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/subcategories")
@@ -95,6 +97,30 @@ export default function TransactionsPage() {
 
   const handleAddSuccess = () => {
     fetchTransactions();
+  };
+
+  const openDeleteModal = (tx: Transaction) => {
+    setDeletePending(tx);
+    setDeleteError(null);
+  };
+
+  const closeDeleteModal = () => {
+    setDeletePending(null);
+    setDeleteError(null);
+  };
+
+  const confirmDeleteTransaction = async () => {
+    if (!deletePending) return;
+    setDeleteError(null);
+    try {
+      const res = await fetch(`/api/transactions/${deletePending.id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to delete");
+      closeDeleteModal();
+      fetchTransactions();
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Failed to delete");
+    }
   };
 
   const handleSort = (column: SortBy) => {
@@ -267,6 +293,7 @@ export default function TransactionsPage() {
                     <SortHeader column="credit">Credit</SortHeader>
                     <SortHeader column="subCategory">Sub Category</SortHeader>
                     <SortHeader column="category">Category</SortHeader>
+                    <th className="w-10 px-4 py-3 text-left text-sm font-semibold text-gray-700" />
                   </tr>
                 </thead>
                 <tbody>
@@ -306,6 +333,18 @@ export default function TransactionsPage() {
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-700">
                         {row.category}
+                      </td>
+                      <td className="px-4 py-3">
+                        <button
+                          type="button"
+                          onClick={() => openDeleteModal(row)}
+                          className="flex h-6 w-6 items-center justify-center rounded text-red-600 transition-colors hover:bg-red-50"
+                          aria-label={`Delete transaction ${row.description}`}
+                        >
+                          <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -356,6 +395,47 @@ export default function TransactionsPage() {
         onClose={() => setIsDeleteModalOpen(false)}
         onSuccess={handleAddSuccess}
       />
+
+      {/* Delete Transaction Confirmation Modal */}
+      {deletePending && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4">
+          <div
+            className="absolute inset-0 bg-black/50"
+            onClick={closeDeleteModal}
+            aria-hidden="true"
+          />
+          <div className="relative z-10 w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <h2 className="mb-4 text-xl font-bold text-gray-900">
+              Delete Transaction?
+            </h2>
+            <p className="mb-2 text-sm text-gray-600">
+              Are you sure you want to delete &quot;{deletePending.description}&quot;?
+            </p>
+            <p className="mb-6 text-sm text-gray-600">
+              This action cannot be undone.
+            </p>
+            {deleteError && (
+              <p className="mb-4 text-sm text-red-600">{deleteError}</p>
+            )}
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={closeDeleteModal}
+                className="rounded-lg border border-gray-300 bg-white px-5 py-2.5 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmDeleteTransaction}
+                className="rounded-lg bg-red-600 px-5 py-2.5 text-sm font-medium text-white hover:bg-red-700 transition-colors"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
