@@ -338,7 +338,7 @@ export default function DashboardPage() {
             <p className="mb-4 text-sm text-gray-500">
               This month&apos;s spending by category
             </p>
-            <div className="h-48 w-48 shrink-0">
+            <div className="h-80 w-80 shrink-0">
               <Doughnut data={pieData} options={pieOptions} />
             </div>
           </div>

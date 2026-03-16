@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import AddTransactionModal from "@/components/AddTransactionModal";
+import DeleteTransactionsModal from "@/components/DeleteTransactionsModal";
 import SubCategoryAutocomplete, { type SubCategory } from "@/components/SubCategoryAutocomplete";
 
 type Transaction = {
@@ -30,6 +31,7 @@ export default function TransactionsPage() {
   const [ownersDropdownOpen, setOwnersDropdownOpen] = useState(false);
   const ownersDropdownRef = useRef<HTMLDivElement>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [subCategories, setSubCategories] = useState<SubCategory[]>([]);
   const [loading, setLoading] = useState(true);
@@ -179,12 +181,6 @@ export default function TransactionsPage() {
               </div>
             )}
           </div>
-          <select className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary">
-            <option>All categories</option>
-          </select>
-          <select className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary">
-            <option>All Types</option>
-          </select>
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-700">Show Incomplete Only</span>
             <button
@@ -224,6 +220,26 @@ export default function TransactionsPage() {
               />
             </svg>
             Add Transaction
+          </button>
+          <button
+            type="button"
+            onClick={() => setIsDeleteModalOpen(true)}
+            className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-600 text-white transition-colors hover:bg-red-700"
+            aria-label="Delete transactions by import"
+          >
+            <svg
+              className="h-5 w-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+              />
+            </svg>
           </button>
         </div>
       </div>
@@ -333,6 +349,11 @@ export default function TransactionsPage() {
       <AddTransactionModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
+        onSuccess={handleAddSuccess}
+      />
+      <DeleteTransactionsModal
+        isOpen={isDeleteModalOpen}
+        onClose={() => setIsDeleteModalOpen(false)}
         onSuccess={handleAddSuccess}
       />
     </div>

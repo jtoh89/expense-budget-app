@@ -2,6 +2,72 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/db";
 
 /**
+ * GET /api/imports
+ * Returns list of imports with id, cardId, cardName, date for dropdown
+ */
+export async function GET() {
+  if (!supabase) {
+    return NextResponse.json(
+      { error: "Database not configured" },
+      { status: 503 }
+    );
+  }
+
+  try {
+    const { data: importRows, error: importError } = await supabase
+      .from("imports")
+      .select("id, card_id, date")
+      .order("date", { ascending: false });
+
+    if (importError) throw importError;
+
+    const cardIds = [...new Set((importRows ?? []).map((r) => r.card_id).filter(Boolean))];
+    const cardMap: Record<string, { name: string; owner: string }> = {};
+
+    if (cardIds.length > 0) {
+      const { data: cardData, error: cardError } = await supabase
+        .from("cards")
+        .select("id, card_name, owner")
+        .in("id", cardIds);
+
+      if (!cardError && cardData) {
+        for (const c of cardData) {
+          if (c.id) cardMap[c.id] = { name: c.card_name ?? "", owner: c.owner ?? "" };
+        }
+      }
+    }
+
+    const result = (importRows ?? []).map((r) => {
+      const dateVal = r.date;
+      const dateStr =
+        dateVal != null && String(dateVal).trim()
+          ? new Date(String(dateVal)).toLocaleDateString(undefined, {
+              year: "numeric",
+              month: "short",
+              day: "numeric",
+            })
+          : "—";
+      const card = r.card_id ? cardMap[r.card_id] : null;
+      return {
+        id: r.id,
+        cardId: r.card_id,
+        cardName: card?.name ?? "Unknown",
+        owner: card?.owner ?? "",
+        date: dateStr,
+      };
+    });
+
+    return NextResponse.json(result);
+  } catch (error) {
+    console.error("GET /api/imports error:", error);
+    return NextResponse.json(
+      { error: "Failed to fetch imports" },
+      { status: 500 }
+    );
+  }
+}
+
+/**
  * POST /api/imports
  * Body: { cardId, filename, transactions: [{ date, description, debit, credit }] }
  */
