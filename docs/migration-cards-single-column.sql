@@ -1,5 +1,8 @@
--- Optional: remove `single_column` if you already ran an older migration that added it.
--- The app no longer uses this column: "single column" mode is stored as `credit_header` IS NULL
--- with the amount column name in `debit_header`.
-
+-- Optional one-time renames / cleanup for `cards` (adjust to your history):
+--
+-- If you still have `single_column` from an old attempt, you can drop it:
 -- ALTER TABLE public.cards DROP COLUMN IF EXISTS single_column;
+--
+-- If you renamed `is_inverted` → `use_single_column` in the database, the app expects:
+--   use_single_column boolean NOT NULL DEFAULT false
+-- (API maps JSON `singleColumn` ↔ `use_single_column`.)

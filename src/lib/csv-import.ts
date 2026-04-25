@@ -1,11 +1,15 @@
+/** Stored in `cards.single_column_debit_format` when `use_single_column` is true */
+export const SINGLE_COLUMN_DEBIT_FORMATS = ["parentheses", "negative", "positive"] as const;
+export type SingleColumnDebitFormat = (typeof SINGLE_COLUMN_DEBIT_FORMATS)[number];
+
 export type CardConfig = {
 	dateHeader: string;
 	descriptionHeader: string;
 	debitHeader: string | null;
 	creditHeader: string | null;
 	singleColumn: boolean;
-	/** When true, flip debit vs credit interpretation for single-column amount cells */
-	isInverted?: boolean;
+	/** How single-column cells indicate debits vs credits; ignored when not single-column */
+	singleColumnDebitFormat: SingleColumnDebitFormat | null;
 };
 
 export type ParsedTransaction = {
@@ -79,15 +83,61 @@ function normalizeDate(val: string): string {
 }
 
 /**
- * Parse amount string. Handles: "50.00", "(50.00)", "-50", "$50.00", "1,234.56"
- * Returns { value, isDebit } - isDebit when in parens or negative
+ * Legacy single-column parsing (when `singleColumnDebitFormat` is null): debit if `(` or `-`.
  */
-function parseAmount(val: string): { value: number; isDebit: boolean } {
+function parseAmountLegacy(val: string): { value: number; isDebit: boolean } {
 	const s = String(val || "").trim();
 	const isDebit = s.startsWith("(") || s.startsWith("-");
 	const cleaned = s.replace(/[$,()]/g, "").trim();
 	const num = parseFloat(cleaned.replace(/,/g, ""));
 	const value = isNaN(num) ? 0 : Math.abs(num);
+	return { value, isDebit };
+}
+
+/**
+ * Single-column amount cell → absolute value + whether it books as debit.
+ * - parentheses: debit when value is in accounting parentheses, e.g. `(50.00)`
+ * - negative: debit when the cell starts with `-` (after optional `$`)
+ * - positive: debit when the signed amount is &gt; 0 (plain positive = debit, negative or `(x)` = credit)
+ */
+export function parseSingleColumnAmount(raw: string, format: SingleColumnDebitFormat | null | undefined): { value: number; isDebit: boolean } {
+	const s = String(raw || "").trim();
+	if (format == null) {
+		return parseAmountLegacy(s);
+	}
+	if (format === "parentheses") {
+		const m = s.match(/^\s*\(\s*([^)]*)\s*\)\s*$/);
+		const isDebit = m != null;
+		const inner = (m ? m[1] : s).replace(/[$,]/g, "");
+		const num = parseFloat(inner.replace(/,/g, ""));
+		const value = isNaN(num) ? 0 : Math.abs(num);
+		return { value, isDebit };
+	}
+	if (format === "negative") {
+		const t = s.replace(/^\$/, "").trim();
+		const isDebit = t.startsWith("-");
+		const cleaned = t.replace(/^-/, "").replace(/[$,]/g, "");
+		const num = parseFloat(cleaned.replace(/,/g, ""));
+		const value = isNaN(num) ? 0 : Math.abs(num);
+		return { value, isDebit };
+	}
+	// positive: signed amount — positive = debit, negative or parentheses = credit
+	let t = s.replace(/[$,\s]/g, "").trim();
+	let sign = 1;
+	if (t.startsWith("(") && t.endsWith(")")) {
+		sign = -1;
+		t = t.slice(1, -1);
+	} else if (t.startsWith("-")) {
+		sign = -1;
+		t = t.slice(1);
+	} else if (t.startsWith("+")) {
+		t = t.slice(1);
+	}
+	const n = parseFloat(t.replace(/,/g, "") || "0");
+	if (isNaN(n)) return { value: 0, isDebit: false };
+	const signed = sign * Math.abs(n);
+	const value = Math.abs(n);
+	const isDebit = signed > 0;
 	return { value, isDebit };
 }
 
@@ -172,10 +222,7 @@ export function parseCSVToTransactions(csvText: string, config: CardConfig): Par
 		let amount = 0;
 
 		if (config.singleColumn && amountIdx >= 0) {
-			let { value, isDebit } = parseAmount(row[amountIdx] || "");
-			if (config.isInverted) {
-				isDebit = !isDebit;
-			}
+			const { value, isDebit } = parseSingleColumnAmount(row[amountIdx] || "", config.singleColumnDebitFormat);
 			if (isDebit) {
 				debit = value;
 				amount = -value;

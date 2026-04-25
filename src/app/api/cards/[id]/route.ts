@@ -14,7 +14,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 		const { id } = await params;
 		const { data, error } = await supabase
 			.from("cards")
-			.select("id, owner, card_name, date_header, description_header, debit_header, credit_header, is_inverted")
+			.select("id, owner, card_name, date_header, description_header, debit_header, credit_header, use_single_column, single_column_debit_format")
 			.eq("id", id)
 			.single();
 
@@ -35,9 +35,15 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 			descriptionHeader: data.description_header,
 			debitHeader: data.debit_header,
 			creditHeader: data.credit_header,
-			/** True when the card uses one amount column only (`debit_header`); we store that as `credit_header` = null. */
-			singleColumn: data.credit_header == null,
-			isInverted: data.is_inverted ?? false,
+			/**
+			 * From `use_single_column`; if missing (legacy), infer from `credit_header == null`.
+			 */
+			singleColumn: (data as { use_single_column?: boolean | null }).use_single_column ?? data.credit_header == null,
+			singleColumnDebitFormat: (() => {
+				const f = (data as { single_column_debit_format?: string | null }).single_column_debit_format;
+				if (f === "parentheses" || f === "negative" || f === "positive") return f;
+				return null;
+			})(),
 		});
 	} catch (error) {
 		console.error("GET /api/cards/[id] error:", error);
@@ -47,7 +53,7 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
 
 /**
  * PATCH /api/cards/[id]
- * Body: { owner?, cardName?, dateHeader?, descriptionHeader?, debitHeader?, creditHeader?, singleColumn?, isInverted? }
+ * Body: { owner?, cardName?, dateHeader?, descriptionHeader?, debitHeader?, creditHeader?, singleColumn?, singleColumnDebitFormat? }
  */
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
 	if (!supabase) {
@@ -64,15 +70,44 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
 		if (body.dateHeader != null) updates.date_header = String(body.dateHeader).trim();
 		if (body.descriptionHeader != null) updates.description_header = String(body.descriptionHeader).trim();
 		if (body.debitHeader !== undefined) updates.debit_header = body.debitHeader ? String(body.debitHeader).trim() : null;
-		if (body.singleColumn === true) {
-			updates.credit_header = null;
+		if (body.singleColumn != null) {
+			updates.use_single_column = body.singleColumn === true;
+			if (body.singleColumn === true) {
+				updates.credit_header = null;
+				if (
+					body.singleColumnDebitFormat === "parentheses" ||
+					body.singleColumnDebitFormat === "negative" ||
+					body.singleColumnDebitFormat === "positive"
+				) {
+					updates.single_column_debit_format = body.singleColumnDebitFormat;
+				} else if (body.singleColumnDebitFormat === null) {
+					updates.single_column_debit_format = null;
+				}
+			} else {
+				updates.single_column_debit_format = null;
+				if (body.creditHeader !== undefined) {
+					updates.credit_header = body.creditHeader ? String(body.creditHeader).trim() : null;
+				}
+			}
 		} else if (body.creditHeader !== undefined) {
 			updates.credit_header = body.creditHeader ? String(body.creditHeader).trim() : null;
 		}
-		if (body.isInverted != null) updates.is_inverted = body.isInverted === true;
+		if (body.singleColumn == null && body.singleColumnDebitFormat !== undefined) {
+			const f = body.singleColumnDebitFormat;
+			if (f === "parentheses" || f === "negative" || f === "positive") {
+				updates.single_column_debit_format = f;
+			} else if (f === null) {
+				updates.single_column_debit_format = null;
+			}
+		}
 
 		if (Object.keys(updates).length === 0) {
 			return NextResponse.json({ error: "No fields to update" }, { status: 400 });
+		}
+
+		// Single-column cards never use a credit header; ensure DB cannot keep a stale value.
+		if (updates.use_single_column === true) {
+			updates.credit_header = null;
 		}
 
 		const { error } = await supabase.from("cards").update(updates).eq("id", id);

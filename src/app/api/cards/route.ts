@@ -31,7 +31,7 @@ export async function GET() {
 
 /**
  * POST /api/cards
- * Body: { owner, cardName, dateHeader?, descriptionHeader?, debitHeader?, creditHeader?, singleColumn?, isInverted? }
+ * Body: { owner, cardName, dateHeader?, descriptionHeader?, debitHeader?, creditHeader?, singleColumn?, singleColumnDebitFormat? }
  */
 export async function POST(request: Request) {
 	if (!supabase) {
@@ -40,7 +40,7 @@ export async function POST(request: Request) {
 
 	try {
 		const body = await request.json();
-		const { owner, cardName, dateHeader, descriptionHeader, debitHeader, creditHeader, singleColumn, isInverted } = body;
+		const { owner, cardName, dateHeader, descriptionHeader, debitHeader, creditHeader, singleColumn, singleColumnDebitFormat } = body;
 
 		if (!owner || !cardName) {
 			return NextResponse.json({ error: "owner and cardName are required" }, { status: 400 });
@@ -55,6 +55,10 @@ export async function POST(request: Request) {
 		const id = slug || `card_${Date.now()}`;
 
 		const isSingle = singleColumn === true;
+		const fmt =
+			singleColumnDebitFormat === "parentheses" || singleColumnDebitFormat === "negative" || singleColumnDebitFormat === "positive"
+				? singleColumnDebitFormat
+				: "negative";
 		const { error } = await supabase.from("cards").insert({
 			id,
 			owner: String(owner).trim(),
@@ -64,7 +68,8 @@ export async function POST(request: Request) {
 			/** Single-column CSV: one amount column name only; we persist as debit_header, credit_header stays null. */
 			debit_header: debitHeader ? String(debitHeader).trim() : null,
 			credit_header: isSingle ? null : creditHeader ? String(creditHeader).trim() : null,
-			is_inverted: isInverted === true,
+			use_single_column: isSingle,
+			single_column_debit_format: isSingle ? fmt : null,
 		});
 
 		if (error) throw error;

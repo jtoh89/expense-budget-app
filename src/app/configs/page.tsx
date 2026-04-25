@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import AddNewCardModal from "@/components/AddNewCardModal";
+import AddNewCardModal, { type CardInput, type EditCardData } from "@/components/AddNewCardModal";
 import AddCategoryModal from "@/components/AddCategoryModal";
 import AddSubcategoryModal from "@/components/AddSubcategoryModal";
 import AddSkipKeywordModal from "@/components/AddSkipKeywordModal";
@@ -20,17 +20,7 @@ export default function ConfigsPage() {
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState<string | null>(null);
 	const [isAddCardModalOpen, setIsAddCardModalOpen] = useState(false);
-	const [editCard, setEditCard] = useState<{
-		id: string;
-		owner: string;
-		cardName: string;
-		dateHeader: string;
-		descriptionHeader: string;
-		debitHeader: string | null;
-		creditHeader: string | null;
-		singleColumn: boolean;
-		isInverted: boolean;
-	} | null>(null);
+	const [editCard, setEditCard] = useState<EditCardData | null>(null);
 
 	const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
 	const [categoriesLoading, setCategoriesLoading] = useState(true);
@@ -137,16 +127,7 @@ export default function ConfigsPage() {
 		fetchSkipKeywords();
 	}, [fetchSkipKeywords]);
 
-	const handleAddCard = async (card: {
-		owner: string;
-		cardName: string;
-		dateHeader: string;
-		descriptionHeader: string;
-		debitHeader: string | null;
-		creditHeader: string | null;
-		singleColumn: boolean;
-		isInverted: boolean;
-	}) => {
+	const handleAddCard = async (card: CardInput) => {
 		try {
 			const res = await fetch("/api/cards", {
 				method: "POST",
@@ -159,7 +140,7 @@ export default function ConfigsPage() {
 					debitHeader: card.debitHeader,
 					creditHeader: card.creditHeader,
 					singleColumn: card.singleColumn,
-					isInverted: card.isInverted,
+					singleColumnDebitFormat: card.singleColumnDebitFormat,
 				}),
 			});
 			const data = await res.json();
@@ -220,19 +201,7 @@ export default function ConfigsPage() {
 		}
 	};
 
-	const handleEditCard = async (
-		id: string,
-		card: {
-			owner: string;
-			cardName: string;
-			dateHeader: string;
-			descriptionHeader: string;
-			debitHeader: string | null;
-			creditHeader: string | null;
-			singleColumn: boolean;
-			isInverted: boolean;
-		},
-	) => {
+	const handleEditCard = async (id: string, card: CardInput) => {
 		try {
 			const res = await fetch(`/api/cards/${id}`, {
 				method: "PATCH",
@@ -245,7 +214,7 @@ export default function ConfigsPage() {
 					debitHeader: card.debitHeader,
 					creditHeader: card.creditHeader,
 					singleColumn: card.singleColumn,
-					isInverted: card.isInverted,
+					singleColumnDebitFormat: card.singleColumnDebitFormat,
 				}),
 			});
 			if (!res.ok) throw new Error("Failed to update card");

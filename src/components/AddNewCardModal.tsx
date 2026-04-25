@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import type { SingleColumnDebitFormat } from "@/lib/csv-import";
 
 const MOCK_OWNERS = ["Jon", "Yin"];
 
@@ -12,7 +13,8 @@ export type CardInput = {
 	debitHeader: string | null;
 	creditHeader: string | null;
 	singleColumn: boolean;
-	isInverted: boolean;
+	/** When not single-column, null. Set `use_single_column` + `single_column_debit_format` on the server. */
+	singleColumnDebitFormat: SingleColumnDebitFormat | null;
 };
 
 export type EditCardData = CardInput & { id: string };
@@ -32,16 +34,21 @@ const DEFAULT_HEADERS = {
 	creditHeader: "Credit",
 };
 
+function normalizeDebitFormat(v: SingleColumnDebitFormat | null | undefined): SingleColumnDebitFormat {
+	if (v === "parentheses" || v === "positive") return v;
+	return "negative";
+}
+
 export default function AddNewCardModal({ isOpen, onClose, onAdd, editCard, onEdit }: AddNewCardModalProps) {
 	const [singleColumn, setSingleColumn] = useState(editCard?.singleColumn ?? false);
-	const [isInverted, setIsInverted] = useState(editCard?.isInverted ?? false);
+	const [debitFormat, setDebitFormat] = useState<SingleColumnDebitFormat>(() => normalizeDebitFormat(editCard?.singleColumnDebitFormat));
 
 	useEffect(() => {
 		if (isOpen) {
 			setSingleColumn(editCard?.singleColumn ?? false);
-			setIsInverted(editCard?.isInverted ?? false);
+			setDebitFormat(normalizeDebitFormat(editCard?.singleColumnDebitFormat));
 		}
-	}, [isOpen, editCard?.singleColumn, editCard?.isInverted]);
+	}, [isOpen, editCard?.singleColumn, editCard?.singleColumnDebitFormat]);
 
 	if (!isOpen) return null;
 
@@ -79,7 +86,7 @@ export default function AddNewCardModal({ isOpen, onClose, onAdd, editCard, onEd
 				debitHeader,
 				creditHeader,
 				singleColumn,
-				isInverted,
+				singleColumnDebitFormat: singleColumn ? debitFormat : null,
 			};
 			if (isEdit && editCard) {
 				onEdit?.(editCard.id, cardData);
@@ -154,30 +161,6 @@ export default function AddNewCardModal({ isOpen, onClose, onAdd, editCard, onEd
 									/>
 								</button>
 							</div>
-							<div className="flex items-center justify-between">
-								<span id="inverted-label" className="text-sm text-gray-700">
-									Invert amount sign
-								</span>
-								<button
-									type="button"
-									role="switch"
-									aria-checked={isInverted}
-									aria-labelledby="inverted-label"
-									onClick={() => setIsInverted((v) => !v)}
-									className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 ${
-										isInverted ? "bg-primary" : "bg-gray-200"
-									}`}
-								>
-									<span
-										className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition-transform ${
-											isInverted ? "translate-x-5" : "translate-x-1"
-										}`}
-									/>
-								</button>
-							</div>
-							<p className="text-xs text-gray-500">
-								Invert: swap whether a negative / parenthesized value is treated as debit vs credit in single-column CSVs.
-							</p>
 							<div>
 								<label htmlFor="dateHeader" className="mb-1 block text-xs text-gray-600">
 									Date
@@ -219,6 +202,25 @@ export default function AddNewCardModal({ isOpen, onClose, onAdd, editCard, onEd
 										required
 										className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 placeholder-gray-400 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
 									/>
+									<div className="pt-1">
+										<label htmlFor="debitFormat" className="mb-1 block text-xs text-gray-600">
+											Debit format <span className="text-red-500">(required)</span>
+										</label>
+										<select
+											id="debitFormat"
+											name="debitFormat"
+											value={debitFormat}
+											onChange={(e) => setDebitFormat(e.target.value as SingleColumnDebitFormat)}
+											className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-800 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
+										>
+											<option value="parentheses">Parentheses</option>
+											<option value="negative">Negative</option>
+											<option value="positive">Positive</option>
+										</select>
+										<p className="mt-1 text-xs text-gray-500">
+											How debits appear in the amount column: (amount), leading -, or positive number = debit.
+										</p>
+									</div>
 								</div>
 							) : (
 								<>

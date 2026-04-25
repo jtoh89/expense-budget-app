@@ -68,7 +68,7 @@ export default function ImportsPage() {
 					debitHeader: cardData.debitHeader ?? null,
 					creditHeader: cardData.creditHeader ?? null,
 					singleColumn: cardData.singleColumn ?? false,
-					isInverted: cardData.isInverted ?? false,
+					singleColumnDebitFormat: cardData.singleColumnDebitFormat ?? null,
 				};
 				const parseResult = parseCSVToTransactions(text, config);
 				if (!parseResult.ok) {
