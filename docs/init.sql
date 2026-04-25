@@ -16,7 +16,5 @@ CREATE TABLE budget_allocations (
   year INTEGER NOT NULL,
   monthly_budget NUMERIC(10, 2),
   annual_budget NUMERIC(10, 2),
-  irs_limit NUMERIC(10, 2),
-  employer_match NUMERIC(4, 1),
   CONSTRAINT budget_allocations_budget_subcategory_unique UNIQUE (budget_id, subcategory_id)
 );

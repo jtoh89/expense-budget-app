@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { formatCurrency, formatCurrencyRounded, parseCurrencyInput } from "@/lib/currency";
+import { subCategoryNameTextClass } from "@/lib/subcategory-display";
 import AddBudgetItemModal from "@/components/AddBudgetItemModal";
 import { Chart as ChartJS, ArcElement, CategoryScale, Tooltip, Legend } from "chart.js";
 import { Doughnut } from "react-chartjs-2";
@@ -18,14 +19,10 @@ type CategoryRow = {
 	expense: string;
 	monthly: number;
 	annual: number;
-	irsLimit?: number;
-	match?: string;
 };
 
 type BudgetSection = {
 	name: string;
-	hasIrsLimit?: boolean;
-	hasMatch?: boolean;
 	rows: CategoryRow[];
 };
 
@@ -36,8 +33,6 @@ type SubcategoryMeta = { id: string; name: string; categoryId: string | null; ca
 type AllocationApiRow = {
 	monthlyBudget: number;
 	annualBudget: number | null;
-	irsLimit: number | null;
-	employerMatch: number | null;
 };
 
 function sortDbCategories(cats: DbCategory[]): DbCategory[] {
@@ -49,11 +44,6 @@ function sortDbCategories(cats: DbCategory[]): DbCategory[] {
 		if (ib === -1) return -1;
 		return ia - ib;
 	});
-}
-
-function sectionFlagsForCategoryId(categoryId: string): { hasIrsLimit?: boolean; hasMatch?: boolean } {
-	if (categoryId === "Pretax") return { hasIrsLimit: true, hasMatch: true };
-	return {};
 }
 
 function parseDbCategories(data: unknown): DbCategory[] {
@@ -74,7 +64,6 @@ function buildCategoryRowsFromDb(categories: DbCategory[], subs: SubcategoryMeta
 	}
 
 	return sortDbCategories(categories).map((cat) => {
-		const flags = sectionFlagsForCategoryId(cat.id);
 		const catSubs = subsByCatId.get(cat.id) ?? [];
 		const rows: CategoryRow[] = catSubs.map((sub) => {
 			const base: CategoryRow = {
@@ -82,19 +71,16 @@ function buildCategoryRowsFromDb(categories: DbCategory[], subs: SubcategoryMeta
 				expense: sub.name,
 				monthly: 0,
 				annual: 0,
-				...(flags.hasIrsLimit ? { irsLimit: 0, match: "—" } : {}),
 			};
 			const alloc = allocationForSubcategory(allocations, sub.id);
 			if (!alloc) return base;
-			const matchStr = alloc.employerMatch != null ? (alloc.employerMatch === 0 ? "0%" : `${alloc.employerMatch}%`) : base.match;
 			return {
 				...base,
 				monthly: alloc.monthlyBudget,
 				annual: alloc.annualBudget ?? alloc.monthlyBudget * 12,
-				...(flags.hasIrsLimit ? { irsLimit: alloc.irsLimit ?? base.irsLimit, match: matchStr ?? base.match } : {}),
 			};
 		});
-		return { name: cat.name, ...flags, rows };
+		return { name: cat.name, rows };
 	});
 }
 
@@ -381,15 +367,11 @@ export default function BudgetPage() {
 					if (alloc == null || typeof alloc.monthlyBudget !== "number") continue;
 					const sub = subs.find((s) => subcategoryIdsMatch(s.id, ak));
 					if (!sub?.categoryName) continue;
-					const sectionMeta = base.find((s) => s.name === sub.categoryName);
-					const matchStr = alloc.employerMatch != null ? (alloc.employerMatch === 0 ? "0%" : `${alloc.employerMatch}%`) : "—";
 					const newRow: CategoryRow = {
 						subcategoryId: sub.id,
 						expense: sub.name,
 						monthly: alloc.monthlyBudget,
 						annual: alloc.annualBudget ?? alloc.monthlyBudget * 12,
-						...(sectionMeta?.hasIrsLimit ? { irsLimit: alloc.irsLimit ?? undefined } : {}),
-						...(sectionMeta?.hasMatch ? { match: matchStr } : {}),
 					};
 					const si = base.findIndex((s) => s.name === sub.categoryName);
 					if (si >= 0) {
@@ -410,31 +392,7 @@ export default function BudgetPage() {
 		};
 	}, [budgetYear, budgetOwner]);
 
-	const parseMatchPct = (s: string | undefined): number => {
-		if (!s || s === "—" || s === "-") return 0;
-		const m = s.replace(/%/g, "").trim();
-		const n = parseFloat(m);
-		return isNaN(n) ? 0 : n;
-	};
-
-	const getPretaxMyContribution = (irsLimit: number, matchPct: number) => {
-		const employerMatch = irsLimit * (matchPct / 100);
-		return Math.max(0, irsLimit - employerMatch);
-	};
-
-	const getSectionTotals = (rows: CategoryRow[], sectionName: string) => {
-		if (sectionName === "Pretax") {
-			return rows.reduce(
-				(acc, row) => {
-					const annual = getPretaxMyContribution(row.irsLimit ?? 0, parseMatchPct(row.match));
-					return {
-						monthly: acc.monthly + annual / 12,
-						annual: acc.annual + annual,
-					};
-				},
-				{ monthly: 0, annual: 0 },
-			);
-		}
+	const getSectionTotals = (rows: CategoryRow[]) => {
 		return rows.reduce(
 			(acc, row) => ({
 				monthly: acc.monthly + row.monthly,
@@ -444,18 +402,11 @@ export default function BudgetPage() {
 		);
 	};
 
-	const getRowAnnual = (section: { name: string; rows: CategoryRow[] }, row: CategoryRow) => {
-		if (section.name === "Pretax" && section.rows) {
-			return getPretaxMyContribution(row.irsLimit ?? 0, parseMatchPct(row.match));
-		}
-		return row.annual;
-	};
-
 	const categoryChartItems = categoryRows
 		.filter((s) => selectedCategoriesForCategoryChart.length === 0 || selectedCategoriesForCategoryChart.includes(s.name))
 		.map((s, i) => ({
 			name: s.name,
-			value: getSectionTotals(s.rows, s.name).annual,
+			value: getSectionTotals(s.rows).annual,
 			color: CHART_COLORS[i % CHART_COLORS.length],
 		}))
 		.filter((item) => item.value > 0);
@@ -476,11 +427,11 @@ export default function BudgetPage() {
 	).flatMap((s) => s.rows);
 
 	const subcategoryChartItems = subcategoryRowsForChart
-		.map((r, i) => {
-			const section = categoryRows.find((s) => s.rows.some((row) => row.subcategoryId === r.subcategoryId));
-			const annual = section ? getRowAnnual(section, r) : r.annual;
-			return { row: r, annual, color: CHART_COLORS[i % CHART_COLORS.length] };
-		})
+		.map((r, i) => ({
+			row: r,
+			annual: r.annual,
+			color: CHART_COLORS[i % CHART_COLORS.length],
+		}))
 		.filter((item) => item.annual > 0);
 
 	const subcategoryChartData = {
@@ -502,20 +453,6 @@ export default function BudgetPage() {
 				display: false,
 			},
 		},
-	};
-
-	const updatePretaxRow = (rowIdx: number, field: "irsLimit" | "match", value: string | number) => {
-		setCategoryRows((prev) => {
-			const sections = prev.map((s) =>
-				s.name === "Pretax"
-					? {
-							...s,
-							rows: s.rows.map((r, i) => (i === rowIdx ? { ...r, [field]: value } : r)),
-						}
-					: s,
-			);
-			return sections;
-		});
 	};
 
 	const updateCategoryRow = (sectionName: string, rowIdx: number, field: "monthly" | "annual", value: number) => {
@@ -609,7 +546,6 @@ export default function BudgetPage() {
 			if (section) {
 				const yearNum = parseInt(budgetYear, 10);
 				for (const row of section.rows) {
-					const employerMatch = row.match != null && row.match !== "—" && row.match !== "-" ? parseMatchPct(row.match) : null;
 					try {
 						const res = await fetch("/api/budget-allocations", {
 							method: "PATCH",
@@ -620,8 +556,6 @@ export default function BudgetPage() {
 								owner: budgetOwner,
 								monthlyBudget: row.monthly,
 								annualBudget: row.annual,
-								irsLimit: row.irsLimit ?? null,
-								employerMatch,
 							}),
 						});
 						if (!res.ok) {
@@ -699,7 +633,7 @@ export default function BudgetPage() {
 	};
 
 	const pretaxSection = categoryRows.find((s) => s.name === "Pretax");
-	const pretaxTotals = pretaxSection ? getSectionTotals(pretaxSection.rows, "Pretax") : { monthly: 0, annual: 0 };
+	const pretaxTotals = pretaxSection ? getSectionTotals(pretaxSection.rows) : { monthly: 0, annual: 0 };
 	const adjustedGrossIncome = Math.max(0, annualIncome + otherIncome - pretaxTotals.annual);
 	const takeHomePay = Math.max(0, adjustedGrossIncome - estimatedTaxes);
 
@@ -1050,7 +984,7 @@ export default function BudgetPage() {
 								{subcategoryChartItems.map((item) => (
 									<div key={item.row.subcategoryId} className="flex items-center gap-2">
 										<div className="h-3 w-3 shrink-0 rounded-full" style={{ backgroundColor: item.color }} />
-										<span className="text-sm text-gray-700 truncate">{item.row.expense}</span>
+										<span className={`text-sm truncate ${subCategoryNameTextClass(item.row.expense)}`}>{item.row.expense}</span>
 										<span className="text-sm text-gray-500 ml-auto shrink-0">{fmt(item.annual)}</span>
 									</div>
 								))}
@@ -1063,7 +997,7 @@ export default function BudgetPage() {
 				<h2 className="mb-6 text-xl font-bold text-gray-800">Budget Expenses</h2>
 
 				{categoryRows.map((section, sectionIdx) => {
-					const totals = getSectionTotals(section.rows, section.name);
+					const totals = getSectionTotals(section.rows);
 					return (
 						<div key={section.name} className={sectionIdx < categoryRows.length - 1 ? "mb-10" : ""}>
 							<div className="mb-4 flex items-center gap-2">
@@ -1083,24 +1017,16 @@ export default function BudgetPage() {
 											<th className="px-4 py-3 text-left text-sm font-semibold text-gray-700">Expense</th>
 											<th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">Monthly</th>
 											<th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">Annual</th>
-											{section.hasIrsLimit && <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">IRS Limit</th>}
-											{section.hasMatch && <th className="px-4 py-3 text-right text-sm font-semibold text-gray-700">Match</th>}
 											{editingSections.includes(section.name) && <th className="w-12 px-2 py-3" aria-label="Actions" />}
 										</tr>
 									</thead>
 									<tbody>
 										{section.rows.map((row, i) => {
-											const isPretax = section.name === "Pretax";
 											const isEditing = editingSections.includes(section.name);
-											const myAnnual =
-												isPretax && section.hasIrsLimit && section.hasMatch
-													? getPretaxMyContribution(row.irsLimit ?? 0, parseMatchPct(row.match))
-													: row.annual;
-											const myMonthly = isPretax ? myAnnual / 12 : row.monthly;
 											return (
 												<tr key={i} className={`border-t border-gray-100 ${i % 2 === 0 ? "bg-white" : "bg-gray-50/50"}`}>
 													<td className="px-4 py-3">
-														<span className="block px-3 py-2 text-sm text-gray-800">{row.expense}</span>
+														<span className={`block px-3 py-2 text-sm ${subCategoryNameTextClass(row.expense, "text-gray-800")}`}>{row.expense}</span>
 													</td>
 													<td className="px-4 py-3 text-right tabular-nums">
 														{isEditing ? (
@@ -1111,8 +1037,6 @@ export default function BudgetPage() {
 																onChange={(e) => updateCategoryRow(section.name, i, "monthly", parseCurrencyInput(e.target.value))}
 																className="w-28 rounded border border-gray-300 bg-white px-3 py-2 text-sm text-right text-gray-800 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
 															/>
-														) : isPretax ? (
-															<span className="block text-sm text-gray-800">{fmt(myMonthly)}</span>
 														) : (
 															<span className="block text-sm text-gray-800">{fmt(row.monthly)}</span>
 														)}
@@ -1126,45 +1050,10 @@ export default function BudgetPage() {
 																onChange={(e) => updateCategoryRow(section.name, i, "annual", parseCurrencyInput(e.target.value))}
 																className="w-28 rounded border border-gray-300 bg-white px-3 py-2 text-sm text-right text-gray-800 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
 															/>
-														) : isPretax ? (
-															<span className="block text-sm text-gray-800">{fmt(myAnnual)}</span>
 														) : (
 															<span className="block text-sm text-gray-800">{fmt(row.annual)}</span>
 														)}
 													</td>
-													{section.hasIrsLimit && (
-														<td className="px-4 py-3 text-right tabular-nums">
-															{isEditing ? (
-																<input
-																	type="text"
-																	inputMode="numeric"
-																	value={row.irsLimit != null ? formatCurrencyRounded(row.irsLimit) : ""}
-																	onChange={(e) => updatePretaxRow(i, "irsLimit", parseCurrencyInput(e.target.value))}
-																	placeholder="$0"
-																	className="w-28 rounded border border-gray-300 bg-white px-3 py-2 text-sm text-right text-gray-800 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-																/>
-															) : (
-																<span className="block text-sm text-gray-800">
-																	{budgetOwner ? (row.irsLimit != null ? formatCurrencyRounded(row.irsLimit) : "—") : "—"}
-																</span>
-															)}
-														</td>
-													)}
-													{section.hasMatch && (
-														<td className="px-4 py-3 text-right tabular-nums">
-															{isEditing ? (
-																<input
-																	type="text"
-																	value={row.match ?? ""}
-																	onChange={(e) => updatePretaxRow(i, "match", e.target.value)}
-																	placeholder="e.g. 4%"
-																	className="w-28 rounded border border-gray-300 bg-white px-3 py-2 text-sm text-right text-gray-800 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
-																/>
-															) : (
-																<span className="block text-sm text-gray-800">{budgetOwner ? (row.match ?? "—") : "—"}</span>
-															)}
-														</td>
-													)}
 													{isEditing && (
 														<td className="px-2 py-3 text-right">
 															<button
@@ -1197,7 +1086,7 @@ export default function BudgetPage() {
 										})}
 										{editingSections.includes(section.name) && (
 											<tr className="border-t border-gray-200">
-												<td colSpan={3 + (section.hasIrsLimit ? 1 : 0) + (section.hasMatch ? 1 : 0) + 1} className="px-4 py-3">
+												<td colSpan={4} className="px-4 py-3">
 													<button
 														type="button"
 														onClick={() => setAddItemModalSection(section.name)}
@@ -1228,8 +1117,6 @@ export default function BudgetPage() {
 											<td className="px-4 py-3 text-sm text-gray-800">TOTAL:</td>
 											<td className="px-4 py-3 text-right text-sm tabular-nums text-gray-800">{fmt(totals.monthly)}</td>
 											<td className="px-4 py-3 text-right text-sm tabular-nums text-gray-800">{fmt(totals.annual)}</td>
-											{section.hasIrsLimit && <td className="px-4 py-3 text-right text-sm text-gray-800">—</td>}
-											{section.hasMatch && <td className="px-4 py-3 text-right text-sm text-gray-800">—</td>}
 											{editingSections.includes(section.name) && <td className="w-12 px-2 py-3" />}
 										</tr>
 									</tfoot>
@@ -1271,8 +1158,6 @@ export default function BudgetPage() {
 					}}
 					sectionName={addItemModalSection}
 					existingSubcategoryIds={categoryRows.find((s) => s.name === addItemModalSection)?.rows.map((r) => r.subcategoryId) ?? []}
-					hasIrsLimit={categoryRows.find((s) => s.name === addItemModalSection)?.hasIrsLimit}
-					hasMatch={categoryRows.find((s) => s.name === addItemModalSection)?.hasMatch}
 				/>
 			)}
 

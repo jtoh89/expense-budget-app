@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { subCategoryNameTextClass } from "@/lib/subcategory-display";
 import AddNewCardModal, { type CardInput, type EditCardData } from "@/components/AddNewCardModal";
 import AddCategoryModal from "@/components/AddCategoryModal";
 import AddSubcategoryModal from "@/components/AddSubcategoryModal";
@@ -504,7 +505,7 @@ export default function ConfigsPage() {
 								<tbody>
 									{subcategories.map((row) => (
 										<tr key={row.id} className="border-t border-gray-100 hover:bg-gray-50">
-											<td className="px-4 py-3 text-sm text-gray-700">{row.name}</td>
+											<td className={`px-4 py-3 text-sm ${subCategoryNameTextClass(row.name)}`}>{row.name}</td>
 											<td className="px-4 py-3 text-sm text-gray-700">{row.categoryName ?? "—"}</td>
 											<td className="px-4 py-3 text-right">
 												<button
