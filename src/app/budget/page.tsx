@@ -1103,9 +1103,7 @@ export default function BudgetPage() {
 														<span className="block px-3 py-2 text-sm text-gray-800">{row.expense}</span>
 													</td>
 													<td className="px-4 py-3 text-right tabular-nums">
-														{isPretax ? (
-															<span className="block text-sm text-gray-800">{fmt(myMonthly)}</span>
-														) : isEditing ? (
+														{isEditing ? (
 															<input
 																type="text"
 																inputMode="numeric"
@@ -1113,14 +1111,14 @@ export default function BudgetPage() {
 																onChange={(e) => updateCategoryRow(section.name, i, "monthly", parseCurrencyInput(e.target.value))}
 																className="w-28 rounded border border-gray-300 bg-white px-3 py-2 text-sm text-right text-gray-800 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
 															/>
+														) : isPretax ? (
+															<span className="block text-sm text-gray-800">{fmt(myMonthly)}</span>
 														) : (
 															<span className="block text-sm text-gray-800">{fmt(row.monthly)}</span>
 														)}
 													</td>
 													<td className="px-4 py-3 text-right tabular-nums">
-														{isPretax ? (
-															<span className="block text-sm text-gray-800">{fmt(myAnnual)}</span>
-														) : isEditing ? (
+														{isEditing ? (
 															<input
 																type="text"
 																inputMode="numeric"
@@ -1128,6 +1126,8 @@ export default function BudgetPage() {
 																onChange={(e) => updateCategoryRow(section.name, i, "annual", parseCurrencyInput(e.target.value))}
 																className="w-28 rounded border border-gray-300 bg-white px-3 py-2 text-sm text-right text-gray-800 focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary"
 															/>
+														) : isPretax ? (
+															<span className="block text-sm text-gray-800">{fmt(myAnnual)}</span>
 														) : (
 															<span className="block text-sm text-gray-800">{fmt(row.annual)}</span>
 														)}
