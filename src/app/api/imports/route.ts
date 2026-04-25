@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { supabase } from "@/lib/db";
 
@@ -44,8 +45,9 @@ export async function GET() {
 						})
 					: "—";
 			const card = r.card_id ? cardMap[r.card_id] : null;
+			const rowId = (r as { id?: string | null }).id;
 			return {
-				id: r.id,
+				id: rowId == null || rowId === "" ? "" : String(rowId),
 				cardId: r.card_id,
 				cardName: card?.name ?? "Unknown",
 				owner: card?.owner ?? "",
@@ -101,19 +103,8 @@ export async function POST(request: NextRequest) {
 			}
 		}
 
-		const today = new Date();
-		const dateStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-		const importId = `${String(cardId).trim()}_${dateStr}`;
-
-		const { error: importError } = await supabase.from("imports").insert({
-			id: importId,
-			card_id: cardId,
-			filename: String(filename),
-			upload_date: new Date().toISOString(),
-			row_count: transactions.length,
-		});
-
-		if (importError) throw importError;
+		/** One row per import; must be unique (same card + calendar day is not enough for multiple runs). */
+		const importId = randomUUID();
 
 		const idCounts = new Map<string, number>();
 		const txRows = transactions.map((t: { date: string; description: string; debit: number; credit: number }) => {
@@ -140,12 +131,49 @@ export async function POST(request: NextRequest) {
 			};
 		});
 
+		let rowCount = 0;
+		let rowCountSkipped = 0;
+		if (txRows.length > 0) {
+			const allIds = txRows.map((r) => r.id);
+			const preExisting = new Set<string>();
+			const ID_CHUNK = 300;
+			for (let i = 0; i < allIds.length; i += ID_CHUNK) {
+				const chunk = allIds.slice(i, i + ID_CHUNK);
+				const { data: existing, error: exError } = await supabase.from("transactions").select("id").in("id", chunk);
+				if (exError) throw exError;
+				for (const r of existing ?? []) {
+					const id = (r as { id?: string }).id;
+					if (id) preExisting.add(id);
+				}
+			}
+			rowCountSkipped = txRows.filter((r) => preExisting.has(r.id)).length;
+			rowCount = txRows.length - rowCountSkipped;
+		}
+
+		const { error: importError } = await supabase.from("imports").insert({
+			id: importId,
+			card_id: cardId,
+			filename: String(filename),
+			upload_date: new Date().toISOString(),
+			row_count: rowCount,
+			row_count_skipped: rowCountSkipped,
+		});
+
+		if (importError) throw importError;
+
 		if (txRows.length > 0) {
 			const { error: txError } = await supabase.from("transactions").upsert(txRows, { onConflict: "id", ignoreDuplicates: true });
 			if (txError) throw txError;
 		}
 
-		return NextResponse.json({ success: true, id: importId, count: transactions.length });
+		return NextResponse.json({
+			success: true,
+			id: importId,
+			/** New transaction rows actually inserted (same as `imports.row_count`) */
+			count: rowCount,
+			skipped: rowCountSkipped,
+			submitted: transactions.length,
+		});
 	} catch (error) {
 		console.error("POST /api/imports error:", error);
 		return NextResponse.json({ error: "Failed to import transactions" }, { status: 500 });

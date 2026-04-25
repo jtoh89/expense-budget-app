@@ -48,7 +48,7 @@ export default function DeleteTransactionsModal({ isOpen, onClose, onSuccess }: 
 	};
 
 	const selectAll = () => {
-		setSelectedImportIds(new Set(imports.map((i) => i.id)));
+		setSelectedImportIds(new Set(imports.map((i) => i.id).filter(Boolean)));
 	};
 
 	const selectNone = () => {
@@ -107,12 +107,19 @@ export default function DeleteTransactionsModal({ isOpen, onClose, onSuccess }: 
 							{imports.length === 0 && !fetchError ? (
 								<p className="py-4 text-center text-sm text-amber-600">No imports found.</p>
 							) : (
-								imports.map((imp) => (
-									<label key={imp.id} className="flex cursor-pointer items-center gap-2 rounded px-2 py-2 hover:bg-gray-50">
+								imports.map((imp, index) => (
+									<label
+										key={`import-${String(imp.id)}-${index}`}
+										className="flex cursor-pointer items-center gap-2 rounded px-2 py-2 hover:bg-gray-50"
+									>
 										<input
 											type="checkbox"
-											checked={selectedImportIds.has(imp.id)}
-											onChange={() => toggleImport(imp.id)}
+											name={`import-delete-${index}`}
+											id={`import-delete-cb-${index}`}
+											checked={!!imp.id && selectedImportIds.has(imp.id)}
+											onChange={() => {
+												if (imp.id) toggleImport(imp.id);
+											}}
 											className="h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary"
 										/>
 										<span className="text-sm text-gray-800">
